@@ -1,114 +1,111 @@
 # Shop Inventory API
-FastAPI-based backend for managing shop categories, products, orders, stock movements, and finance entries.
+FastAPI backend for managing categories, products, order checkout, stock transactions, and finance ledger entries.
 
-## What this project is
-This project is a small ERP-style backend for a retail shop. It provides APIs to:
-- Create and list product categories
-- Create and list products
-- Checkout orders with stock validation
-- Automatically log stock and finance records during checkout
+## Overview
+This project provides a simple ERP-style inventory service with:
+- Category management (including parent-child categories)
+- Product management with stock quantity
+- Checkout endpoint that validates stock, creates order + order items, reduces stock, and writes ledger records
+- Decimal-safe money calculations for financial values
 
-## Tech stack (what is used)
+## Tech stack
 - Python 3.11
-- FastAPI
-- Uvicorn
+- FastAPI + Uvicorn
 - SQLAlchemy 2.x
-- PostgreSQL (via `psycopg2-binary`)
-- Docker + Docker Compose
+- PostgreSQL (`psycopg2-binary`)
+- Docker + Docker Compose (with DB healthcheck)
 
-Dependencies are listed in `requirements.txt`.
+## Project structure
+```text
+shop-inventory/
+├── app/
+│   ├── database.py      # SQLAlchemy engine/session setup
+│   ├── main.py          # FastAPI app, schemas, and API routes
+│   └── models.py        # ORM models
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
 
-## Project structure (what each file does)
-- `app/main.py`
-  - FastAPI app
-  - Pydantic request/response schemas
-  - API endpoints (`/`, `/categories/`, `/products/`, `/orders/`)
-  - Main checkout business logic
-- `app/models.py`
-  - SQLAlchemy models:
-    - `Category`
-    - `Product`
-    - `Order`
-    - `OrderItem`
-    - `StockTransaction`
-    - `FinanceLedger`
-- `app/database.py`
-  - Database engine/session setup
-  - Base declarative model class
-- `Dockerfile`
-  - Container image for the API service
-- `docker-compose.yml`
-  - Multi-container setup for API + PostgreSQL
-- `requirements.txt`
-  - Python package dependencies
+## Setup
+### 1) Create `.env` file
+Create a `.env` file in the project root:
 
-## Setup and run
-You can run this project with Docker (recommended) or locally.
+```env
+POSTGRES_USER=shop_admin
+POSTGRES_PASSWORD=shop_password
+POSTGRES_DB=shop_db
+DATABASE_URL=postgresql://shop_admin:shop_password@db:5432/shop_db
+```
 
-### Option 1: Docker (recommended)
-1. Build and start services:
-   - `docker compose up --build`
-2. API will be available at:
-   - `http://localhost:8000`
-3. Swagger UI:
-   - `http://localhost:8000/docs`
+## Run the app
+### Option A: Docker (recommended)
+```bash
+docker compose up --build
+```
 
-To stop:
-- `docker compose down`
+Useful commands:
+```bash
+docker logs -f shop_backend
+docker compose down
+docker compose down -v
+```
 
-To stop and remove DB volume (fresh reset):
-- `docker compose down -v`
+### Option B: Local Python
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export DATABASE_URL='postgresql://shop_admin:shop_password@localhost:5432/shop_db'
+uvicorn app.main:app --reload
+```
 
-### Option 2: Local Python setup
-1. Create and activate virtual environment:
-   - `python3 -m venv .venv`
-   - `source .venv/bin/activate`
-2. Install dependencies:
-   - `pip install -r requirements.txt`
-3. Set database URL (PostgreSQL must be running):
-   - `export DATABASE_URL='postgresql://shop_admin:shop_password@localhost:5432/shop_db'`
-4. Run server:
-   - `uvicorn app.main:app --reload`
+## API docs
+- Swagger UI: `http://localhost:8000/docs`
+- OpenAPI JSON: `http://localhost:8000/openapi.json`
 
-## API quick usage
-### Health
-- `GET /`
+## API endpoints
+- `GET /` - service status
+- `POST /categories/` - create category
+- `GET /categories/` - list categories
+- `POST /products/` - create product
+- `GET /products/` - list products
+- `POST /orders/` - checkout order
 
-### Categories
-- `POST /categories/`
-- `GET /categories/`
-
-### Products
-- `POST /products/`
-- `GET /products/`
-
-### Orders / Checkout
-- `POST /orders/`
-
-Example checkout request:
-`curl -X POST 'http://localhost:8000/orders/' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{"payment_method":"online","items":[{"product_id":2,"quantity":1}]}'`
+## Example checkout request
+```bash
+curl -X POST 'http://localhost:8000/orders/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "payment_method": "online",
+    "items": [
+      {
+        "product_id": 2,
+        "quantity": 1
+      }
+    ]
+  }'
+```
 
 ## Testing
 ### Current status
-There are no automated test files in this repository yet (`pytest` tests are not present).
+Automated tests are not added yet.
 
-### How to test right now
-Use one of these methods:
-- Swagger UI: `http://localhost:8000/docs`
-- Manual curl/API client calls for endpoint validation
+### Manual testing flow
+1. Create a category (`POST /categories/`)
+2. Create a product (`POST /products/`) using that category
+3. Place an order (`POST /orders/`)
+4. Confirm stock is reduced in `GET /products/`
 
-Recommended manual flow:
-1. Create category
-2. Create product linked to category
-3. Checkout order via `/orders/`
-4. Verify product stock decreased and order created
-
-### Add automated tests (recommended next step)
-Suggested:
-- Add `pytest`
-- Add API tests with FastAPI `TestClient`
-- Add integration tests for checkout success/failure scenarios
+### Recommended next step
+Add automated tests with `pytest` + FastAPI `TestClient` for:
+- Successful checkout
+- Out-of-stock checkout
+- Empty cart validation
+- Invalid product ID handling
 
 ## Notes
-- Monetary values now use decimal-safe handling in checkout flow to avoid float/decimal mismatch errors.
-- For production, move credentials from compose file to environment variables/secrets.
+- Money fields are handled with `Decimal` in the checkout path to avoid float precision issues.
+- Keep `.env` out of version control (`.gitignore` already includes it).
