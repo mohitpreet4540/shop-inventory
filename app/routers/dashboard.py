@@ -12,7 +12,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard Analytics"])
 @router.get("/", response_model=DashboardAnalyticsSchema)
 def get_dashboard_analytics(db: Session = Depends(get_db)):
     try:
-        # 🌟 1. CALCULATE FINANCIAL METRICS
+        #  1. CALCULATE FINANCIAL METRICS
         all_sold_items = db.query(OrderItem).all()
         
         total_sales_revenue = Decimal("0.00")
@@ -27,8 +27,6 @@ def get_dashboard_analytics(db: Session = Depends(get_db)):
         
         overall_net_profit = total_sales_revenue - total_purchase_spend
         
-        # 🌟 2. CALCULATE MOST SELLING PRODUCT (New Logic!)
-        # Group by product_id, sum the quantities, and order by total descending
         top_product_query = (
             db.query(OrderItem.product_id, func.sum(OrderItem.quantity).label("total_sold"))
             .group_by(OrderItem.product_id)
@@ -47,7 +45,6 @@ def get_dashboard_analytics(db: Session = Depends(get_db)):
                     "total_quantity_sold": total_qty
                 }
 
-        # 🌟 3. GENERATE LOW STOCK ALERTS
         low_stock_products = db.query(Product).filter(Product.current_quantity <= 5).all()
         
         # 🌟 4. RETURN EVERYTHING SECURELY

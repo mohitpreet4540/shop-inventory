@@ -46,6 +46,9 @@ class OrderCreateSchema(BaseModel):
     payment_method: str  # "CASH" or "ONLINE"
     items: List[CartItemSchema]
 
+
+
+
 class OrderResponseSchema(BaseModel):
     id: int
     total_amount: Decimal  # Changed from float to Decimal to match DB execution
@@ -86,3 +89,18 @@ class DashboardAnalyticsSchema(BaseModel):
     top_selling_product: Optional[TopSellingProductSchema] = None
     low_stock_count: int
     low_stock_alerts: List[LowStockProductSchema]
+
+  
+
+
+class StockTransactionResponseSchema(BaseModel):
+    id: int
+    product_id: int
+    product_name: str 
+    quantity_changed: int
+    type: str       
+    notes: Optional[str] = None
+    timestamp: datetime.datetime
+
+    class Config:
+        from_attributes = True
