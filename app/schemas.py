@@ -71,9 +71,18 @@ class LowStockProductSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class TopSellingProductSchema(BaseModel):
+    id: int
+    name: str
+    total_quantity_sold: int
+
+    class Config:
+        from_attributes = True        
+
 class DashboardAnalyticsSchema(BaseModel):
     total_sales_revenue: Decimal
     total_purchase_spend: Decimal
     overall_net_profit: Decimal
+    top_selling_product: Optional[TopSellingProductSchema] = None
     low_stock_count: int
     low_stock_alerts: List[LowStockProductSchema]
