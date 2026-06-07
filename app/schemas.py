@@ -63,3 +63,17 @@ class StockIncrementRequest(BaseModel):
     quantity: int = Field(..., gt=0, description="Must be greater than zero")
     notes: str = Field(default="Manual restock", description="Changed from 'note' to 'notes' to match DB column")
 
+class LowStockProductSchema(BaseModel):
+    id: int
+    name: str
+    current_quantity: int
+
+    class Config:
+        from_attributes = True
+
+class DashboardAnalyticsSchema(BaseModel):
+    total_sales_revenue: Decimal
+    total_purchase_spend: Decimal
+    overall_net_profit: Decimal
+    low_stock_count: int
+    low_stock_alerts: List[LowStockProductSchema]
