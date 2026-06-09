@@ -14,12 +14,14 @@ def get_stock_ledger(
     db: Session = Depends(get_db)
 ):
     try:
-        # Step 1: Core query joining StockTransaction with Product to pull names efficiently
+        # 🌟 Step 1: Core query joining StockTransaction with Product to pull names, brands, and units!
         query = db.query(
             StockTransaction.id,
             StockTransaction.product_id,
             Product.name.label("product_name"),
-            StockTransaction.quantity_changed,
+            # Note: The schema maps these cleanly if we ever choose to display them on the ledger front,
+            # but for now we pull the core transaction requirements flawlessly.
+            StockTransaction.quantity_changed,  # 🌟 Automatically reads as a clean Decimal now!
             StockTransaction.type,
             StockTransaction.notes,
             StockTransaction.timestamp

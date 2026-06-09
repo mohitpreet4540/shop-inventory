@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retail POS - Inventory Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+
+    <nav class="bg-blue-600 text-white shadow-md px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-shop text-2xl"></i>
+            <span class="text-xl font-bold tracking-wide">SmartPOS Management Console</span>
+        </div>
+        <div class="flex space-x-6 font-medium">
+            <a href="index.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-calculator mr-1"></i> Billing</a>
+            <a href="products.html" class="border-b-2 border-white pb-1 text-white"><i class="fa-solid fa-box mr-1"></i> Inventory</a>
+            <a href="categories.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-folder-tree mr-1"></i> Categories</a>
+        </div>
+    </nav>
+
+    <div class="flex-1 grid grid-cols-12 gap-6 p-6">
+        
+        <aside class="col-span-12 lg:col-span-4 space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="font-bold text-gray-800 text-lg border-b border-gray-100 pb-3 mb-4 flex items-center">
+                    <i class="fa-solid fa-circle-plus text-green-500 mr-2"></i> Onboard New Product
+                </h2>
+                
+                <form id="product-form" class="space-y-4 font-medium text-gray-700 text-sm">
+                    <div>
+                        <label class="block text-gray-600 font-bold mb-1">Product Name *</label>
+                        <input type="text" id="p-name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Maggi Masala 2-Min">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Brand Name</label>
+                            <input type="text" id="p-brand" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Nestle (Default: Local)">
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Unit Type</label>
+                            <select id="p-unit" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                <option value="PIECE">PIECE (Pkt/Bot)</option>
+                                <option value="KG">KG (Loose Weight)</option>
+                                <option value="METER">METER (Length)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-600 font-bold mb-1 flex justify-between">
+                            <span>Barcode Value String</span>
+                            <span class="text-xs text-blue-500 font-bold"><i class="fa-solid fa-keyboard"></i> Scan directly into box</span>
+                        </label>
+                        <input type="text" id="p-barcode" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-blue-50/50 font-mono focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-800" placeholder="Scan barcode or leave empty for loose item">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Cost Price (₹) *</label>
+                            <input type="number" step="0.01" id="p-cost" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Selling Price (₹) *</label>
+                            <input type="number" step="0.01" id="p-selling" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Initial Quantity *</label>
+                            <input type="number" step="0.01" id="p-qty" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">Assign Category *</label>
+                            <select id="p-category" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold text-gray-700">
+                                <option value="">-- Select Category --</option>
+                                </select>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg shadow transition cursor-pointer mt-2 text-center">
+                        <i class="fa-solid fa-cloud-arrow-up mr-1"></i> SAVE TO INVENTORY
+                    </button>
+                </form>
+            </div>
+        </aside>
+
+        <main class="col-span-12 lg:col-span-8 flex flex-col space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+                
+                <div class="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <h2 class="font-bold text-gray-700 text-lg flex items-center">
+                        <i class="fa-solid fa-warehouse text-blue-500 mr-2"></i> Master Stock Control Ledger
+                    </h2>
+                    <div class="w-full sm:w-64 relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                            <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                        </span>
+                        <input type="text" id="inventory-search" class="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Filter stock listing...">
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto flex-1">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 text-gray-600 text-xs uppercase font-bold border-b border-gray-200">
+                                <th class="p-4 w-12 text-center">ID</th>
+                                <th class="p-4">Product Specifications</th>
+                                <th class="p-4 text-center">Barcode String</th>
+                                <th class="p-4 text-right">Cost/Retail Price</th>
+                                <th class="p-4 text-center">Current Balance</th>
+                                <th class="p-4 text-center">Stock Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body" class="divide-y divide-gray-200 text-gray-700 font-medium text-sm">
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/products.js"></script>
+</body>
+</html>

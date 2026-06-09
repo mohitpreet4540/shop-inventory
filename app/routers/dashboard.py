@@ -1,61 +1,95 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from decimal import Decimal
-from typing import Optional
+from typing import List
 from app.database import get_db
-from app.models import OrderItem, Product
-from app.schemas import DashboardAnalyticsSchema
+from app.models import Product, StockTransaction, Category
+from app.schemas import StockIncrementRequest, ProductResponseSchema, ProductCreateSchema
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard Analytics"])
+router = APIRouter(prefix="/products", tags=["Products"])
 
-@router.get("/", response_model=DashboardAnalyticsSchema)
-def get_dashboard_analytics(db: Session = Depends(get_db)):
+# 1. LIST ALL PRODUCTS
+@router.get("/", response_model=List[ProductResponseSchema])
+def get_all_products(db: Session = Depends(get_db)):
+    return db.query(Product).all()
+
+
+# 2. PRODUCT CREATION LOGIC (WITH BRAND, BARCODE, AND UNIT TYPE MAPPINGS)
+@router.post("/", response_model=ProductResponseSchema)
+def create_product(product_data: ProductCreateSchema, db: Session = Depends(get_db)):
+    # Verify category validity
+    category_exists = db.query(Category).filter(Category.id == product_data.category_id).first()
+    if not category_exists:
+        raise HTTPException(status_code=400, detail="Cannot add product. The specified category_id does not exist.")
+    
+    # Optional Protection: Prevent creating duplicate active barcodes if scanned by mistake
+    if product_data.barcode:
+        duplicate_barcode = db.query(Product).filter(Product.barcode == product_data.barcode).first()
+        if duplicate_barcode:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Product setup failed. Barcode '{product_data.barcode}' is already assigned to '{duplicate_barcode.name}'."
+            )
+            
     try:
-        #  1. CALCULATE FINANCIAL METRICS
-        all_sold_items = db.query(OrderItem).all()
-        
-        total_sales_revenue = Decimal("0.00")
-        total_purchase_spend = Decimal("0.00")
-        
-        for item in all_sold_items:
-            product = db.query(Product).filter(Product.id == item.product_id).first()
-            if product:
-                total_sales_revenue += item.unit_price
-                item_cost = Decimal(item.quantity) * product.cost_price
-                total_purchase_spend += item_cost
-        
-        overall_net_profit = total_sales_revenue - total_purchase_spend
-        
-        top_product_query = (
-            db.query(OrderItem.product_id, func.sum(OrderItem.quantity).label("total_sold"))
-            .group_by(OrderItem.product_id)
-            .order_by(func.sum(OrderItem.quantity).desc())
-            .first()
+        # 🌟 Unpacking brand, barcode, and unit_type values into the DB engine
+        new_product = Product(
+            name=product_data.name, 
+            brand=product_data.brand,           # 👈 Injected brand section mapping
+            barcode=product_data.barcode,       # 👈 Injected physical barcode registry mapping
+            unit_type=product_data.unit_type,   # 👈 Injected unit selection mapping (KG, METER, PIECE)
+            cost_price=product_data.cost_price,
+            selling_price=product_data.selling_price, 
+            current_quantity=product_data.current_quantity, # 🌟 Safely registers incoming Decimal weights
+            category_id=product_data.category_id
         )
+        db.add(new_product)
+        db.flush()  # Generates the product ID in memory first
         
-        top_selling_product = None
-        if top_product_query:
-            prod_id, total_qty = top_product_query
-            product_details = db.query(Product).filter(Product.id == prod_id).first()
-            if product_details:
-                top_selling_product = {
-                    "id": product_details.id,
-                    "name": product_details.name,
-                    "total_quantity_sold": total_qty
-                }
-
-        low_stock_products = db.query(Product).filter(Product.current_quantity <= 5).all()
+        # The Audit addition: If starting stock > 0, log it in history ledger!
+        if new_product.current_quantity > 0:
+            initial_stock_log = StockTransaction(
+                product_id=new_product.id,
+                quantity_changed=new_product.current_quantity, # Logs fractional decimal setups cleanly
+                type="INITIAL_STOCK",
+                notes="Initial inventory setup upon product creation"
+            )
+            db.add(initial_stock_log)
         
-        # 🌟 4. RETURN EVERYTHING SECURELY
-        return {
-            "total_sales_revenue": total_sales_revenue,
-            "total_purchase_spend": total_purchase_spend,
-            "overall_net_profit": overall_net_profit,
-            "top_selling_product": top_selling_product, # Returns the top product or None if no sales yet
-            "low_stock_count": len(low_stock_products),
-            "low_stock_alerts": low_stock_products
-        }
+        db.commit()
+        db.refresh(new_product)
+        return new_product
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load analytics: {str(e)}")
+        db.rollback()  # Protects your database if a transaction fails
+        raise HTTPException(status_code=500, detail=f"Product creation failed: {str(e)}")
+
+
+# 3. STOCK REFILL LOGIC (DECIMAL COMPATIBLE)
+@router.post("/add-stock/")
+def add_product_stock(payload: StockIncrementRequest, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == payload.product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    try:
+        # 🌟 Arithmetic operations smoothly combine fixed-point values (e.g. 50.50 + 20.00)
+        product.current_quantity += payload.quantity
+        
+        stock_log = StockTransaction(
+            product_id=product.id,
+            quantity_changed=payload.quantity,
+            type="RESTOCK",
+            notes=payload.notes  
+        )
+        db.add(stock_log)
+        db.commit()
+        db.refresh(product)
+        
+        return {
+            "status": "success",
+            "message": f"Successfully added {payload.quantity} {product.unit_type} to {product.name} ({product.brand})", # 🌟 Dynamic response string update
+            "updated_stock": product.current_quantity
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
