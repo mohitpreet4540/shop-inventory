@@ -58,11 +58,29 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
             })
             stock_logs_to_create.append((product.id, item.quantity))
 
-        # STEP 2: Create Parent Order Entry
+        # 🛡️ SYSTEM INTEGRITY GUARD: Cross-verify frontend total calculations with backend product prices
+        # Allow small rounding float discrepancy up to 0.01 if decimals mismatch slightly
+        if abs(running_total - payload.total_amount) > Decimal("0.01"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Financial Integrity Breach: Calculated total (₹{running_total}) does not match payload total (₹{payload.total_amount})."
+            )
+
+        # 📊 DYNAMIC PAYMENT STATUS ENGINE
+        # If there is remaining Udhaar balance, label status as "PARTIAL" or "UNPAID", else fully "PAID"
+        if payload.amount_pending > 0:
+            calculated_status = "PARTIAL" if payload.amount_paid > 0 else "UNPAID"
+        else:
+            calculated_status = "PAID"
+
+        # STEP 2: Create Parent Order Entry with split ledger parameters
         new_order = Order(
-            total_amount=running_total,
+            total_amount=payload.total_amount,
+            amount_paid=payload.amount_paid,
+            amount_pending=payload.amount_pending,
             payment_method=payload.payment_method.upper(),
-            payment_status="PAID" if payload.payment_method.upper() == "ONLINE" else "PENDING",
+            payment_status=calculated_status,
+            customer_info=payload.customer_info,
             timestamp=datetime.datetime.utcnow()
         )
         db.add(new_order)
@@ -91,12 +109,13 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
                 "unit_price": line["unit_price"]
             })
 
+        # Log individual item stock reduction movements safely
         for prod_id, qty in stock_logs_to_create:
             log = StockTransaction(
                 product_id=prod_id,
                 quantity_changed=-qty, 
                 type="SALE",
-                notes=f"Automated deduction from Order #{new_order.id}"
+                notes=f"Automated deduction from Order #{new_order.id}. Customer Account: {payload.customer_info}"
             )
             db.add(log)
 
@@ -106,10 +125,13 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
         return {
             "id": new_order.id,
             "total_amount": new_order.total_amount,
+            "amount_paid": new_order.amount_paid,
+            "amount_pending": new_order.amount_pending,
             "payment_method": new_order.payment_method,
             "payment_status": new_order.payment_status,
+            "customer_info": new_order.customer_info,
             "timestamp": new_order.timestamp,
-            "items": receipt_items_breakdown # 👈 Beautiful items list sent back instantly!
+            "items": receipt_items_breakdown 
         }
 
     except HTTPException as http_ex:

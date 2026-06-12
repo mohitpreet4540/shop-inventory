@@ -237,13 +237,63 @@ payOnlineLabel.addEventListener('click', () => {
 });
 
 // ==========================================
-// 7. BACKEND CHECKOUT TRANSACTION FINALIZE
+// 7. FIXED: DUAL-TRACK LEDGER CHECKOUT TRANSACTION
 // ==========================================
 checkoutBtn.addEventListener('click', async () => {
-    const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+    if (cart.length === 0) return alert("Cart validation error.");
+
+    const totalBillAmount = parseFloat(grandTotalDisplay.innerText);
+    const primarySelectedMode = document.querySelector('input[name="payment_method"]:checked').value;
     
-    const orderData = {
-        payment_method: paymentMethod,
+    let allocatedPaid = totalBillAmount;
+    let allocatedPending = 0.00;
+    let customerIdentityRecord = "Walk-in Customer";
+    let activePaymentType = primarySelectedMode;
+
+    // 🌟 ENHANCED CASH SECURITY CHECK
+    if (primarySelectedMode === 'CASH') {
+        const securityVerification = confirm(`💰 PHYSICAL CASH TRANSACTION CHECK\n\nTotal Bill Amount: ₹${totalBillAmount.toFixed(2)}\n\nHave you counted and physically received this cash inside the drawer till?`);
+        if (!securityVerification) return; 
+    }
+
+    // 🌟 CHOOSE INVOICE STATE PATHWAY: ASK FOR BOOK ENTRIES
+    const requestLedgerSplit = confirm("Is this an outstanding Credit line account profile order ('Udhaar' / Partial payment deal)?\n\n[OK = Yes, Cancel = Regular Full Payment]");
+
+    if (requestLedgerSplit) {
+        const nameInput = prompt("⚠️ CREDIT LOG MANDATE:\nEnter Customer Name & Phone Number:\n(e.g., Rajesh Kumar - 9876543210)");
+        
+        if (!nameInput || nameInput.trim() === "") {
+            alert("Checkout Blocked! Core accounting requires an identity token string to log outstanding debt.");
+            return;
+        }
+        customerIdentityRecord = nameInput.trim();
+
+        const cashDownPayment = prompt(`Invoice Total Value is ₹${totalBillAmount.toFixed(2)}.\n\nHow much cash/online money did this customer pay right now?\n(Enter 0 for 100% Full Udhaar Khata)`);
+        
+        if (cashDownPayment === null) return; 
+
+        const parsedDownPayment = parseFloat(cashDownPayment);
+        if (isNaN(parsedDownPayment) || parsedDownPayment < 0 || parsedDownPayment > totalBillAmount) {
+            alert("Data Integrity Error: Invalid input value. Amount paid must match financial balance limits.");
+            return;
+        }
+
+        allocatedPaid = parsedDownPayment;
+        allocatedPending = totalBillAmount - allocatedPaid;
+        activePaymentType = allocatedPaid > 0 ? "PARTIAL" : "CREDIT";
+    } else {
+        const casualTracking = prompt("Enter Customer Identity Notes [OPTIONAL]:\n(Leave blank for default Walk-in profile registration)");
+        if (casualTracking && casualTracking.trim() !== "") {
+            customerIdentityRecord = casualTracking.trim();
+        }
+    }
+
+    const comprehensiveOrderPayload = {
+        payment_method: activePaymentType,
+        total_amount: totalBillAmount,
+        amount_paid: allocatedPaid,
+        amount_pending: allocatedPending,
+        customer_info: customerIdentityRecord,
         items: cart.map(item => ({
             product_id: item.id,
             quantity: item.quantity
@@ -251,24 +301,37 @@ checkoutBtn.addEventListener('click', async () => {
     };
 
     try {
+        checkoutBtn.disabled = true; // Block double-click double processing loops
+        
         const response = await fetch(`${API_BASE_URL}/orders/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(orderData)
+            body: JSON.stringify(comprehensiveOrderPayload)
         });
 
+        // 🌟 FIX: Parse the JSON string stream into an object BEFORE evaluating status
+        const data = await response.json();
+
         if (response.ok) {
-            const receipt = await response.json();
-            alert(`🎉 Transaction Successful!\n\nInvoice ID: #${receipt.id}\nTotal Paid: ₹${receipt.total_amount}\nPayment Mode: ${receipt.payment_method}\nStatus: ${receipt.payment_status}`);
+            let successMessage = `🎉 Transaction Finalized Safely!\n\nInvoice ID: #${data.id}\nTotal Bill: ₹${parseFloat(data.total_amount).toFixed(2)}\nPayment Status: ${data.payment_status}`;
+            
+            if (data.amount_pending > 0) {
+                successMessage += `\n\n📝 KHATA BALANCE RECORDED:\nAccount Holder: ${data.customer_info}\nPending Udhaar Ledger Debt: ₹${parseFloat(data.amount_pending).toFixed(2)}`;
+            }
+            
+            alert(successMessage);
             cart = []; 
             renderCart();
             barcodeInput.focus(); 
         } else {
-            const errorMsg = await handleResponseError(response);
-            alert("Checkout Refused: " + errorMsg);
+            // Intercept gracefully if a backend validation error (400/404/422) occurs
+            alert("Checkout Rejected by Backend Pipeline: " + (data.detail || "Validation check breakdown"));
         }
     } catch (error) {
-        alert("Server communication timeout error.");
+        console.error("Frontend Communication Error Trace:", error);
+        alert("Frontend App Error: Connection interrupted or unhandled asset mapping.");
+    } finally {
+        checkoutBtn.disabled = false;
     }
 });
 

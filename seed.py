@@ -6,12 +6,11 @@ from app.database import SessionLocal, engine
 from app import models
 
 def seed_database():
-    print("Starting automated database seeding with Brand & Metric configurations...")
+    print("Starting automated database seeding with Split-Ledger Financial parameters...")
     db: Session = SessionLocal()
     
     try:
         print("🧹 Cleaning up old database records...")
-        db.query(models.FinanceLedger).delete() # Added clean-up for the cash ledger too
         db.query(models.StockTransaction).delete()
         db.query(models.OrderItem).delete()
         db.query(models.Order).delete()
@@ -43,19 +42,16 @@ def seed_database():
             cost_price=Decimal("10.00"), selling_price=Decimal("14.00"), 
             current_quantity=Decimal("200.00"), unit_type="PIECE", category_id=groceries.id
         )
-        # 🌟 Loose Metric Item 1: Test decimal deduction with Kilograms (Sugar)
         p4 = models.Product(
             name="Loose White Sugar", brand="Local", barcode="LOCAL_SUGAR_03",
             cost_price=Decimal("36.00"), selling_price=Decimal("44.00"), 
             current_quantity=Decimal("150.50"), unit_type="KG", category_id=groceries.id
         )
-        # 🌟 Metric Item 2: Test Low Stock warning (Under 3 Meters)
         p5 = models.Product(
             name="Electrical Wire Black", brand="Havells", barcode="LOCAL_WIRE_04",
             cost_price=Decimal("15.00"), selling_price=Decimal("25.00"), 
             current_quantity=Decimal("2.50"), unit_type="METER", category_id=electronics.id
         )
-        # Cosmetic Item to complete the circle
         p6 = models.Product(
             name="Aloe Vera Face Wash", brand="Patanjali", barcode="8904109450321",
             cost_price=Decimal("120.00"), selling_price=Decimal("180.00"), 
@@ -73,34 +69,41 @@ def seed_database():
             )
             db.add(log)
 
-        print("🛒 Simulating checkout order logs...")
+        print("🛒 Simulating split financial invoice order logs...")
         
-        # Order 1: Mixed purchase (Logitech Mouse + USB/Meters tracking)
-        # 2 Mice (2 * 1200 = 2400) + 1.5 meters/units of Havells Wire (1.5 * 25 = 37.50) = 2437.50
+        # 🌟 ORDER 1: Fully Paid UPI Transaction (Fast Track Route)
+        # 2 Mice (2 * 1200 = 2400) + 1.5 meters of Havells Wire (1.5 * 25 = 37.50) = 2437.50 total
         order1 = models.Order(
-            total_amount=Decimal("2437.50"), payment_method="ONLINE", payment_status="PAID",
-            timestamp=datetime.datetime.utcnow()
+            total_amount=Decimal("2437.50"),
+            amount_paid=Decimal("2437.50"),
+            amount_pending=Decimal("0.00"),
+            payment_method="ONLINE",
+            payment_status="PAID",
+            customer_info="Walk-in Customer",
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
         db.add(order1)
         db.flush()
         
-        # 🌟 FIXED: unit_price holds the dynamic unit rate, not the aggregated checkout total!
         oi1 = models.OrderItem(order_id=order1.id, product_id=p1.id, quantity=Decimal("2.00"), unit_price=Decimal("1200.00"))
         oi2 = models.OrderItem(order_id=order1.id, product_id=p5.id, quantity=Decimal("1.50"), unit_price=Decimal("25.00"))
         db.add_all([oi1, oi2])
         
-        # Deduct items from stock using precise decimal arithmetic
         p1.current_quantity -= Decimal("2.00")
         p5.current_quantity -= Decimal("1.50")
-        
-        # Log the sale transactions using standard negative decimal values
         db.add(models.StockTransaction(product_id=p1.id, quantity_changed=Decimal("-2.00"), type="SALE", notes=f"Order #{order1.id}"))
         db.add(models.StockTransaction(product_id=p5.id, quantity_changed=Decimal("-1.50"), type="SALE", notes=f"Order #{order1.id}"))
 
-        # Order 2: Massive order for Maggi (Testing top seller aggregation)
-        # 50 Packets of Maggi * 14 = 700.00
+
+        # 🌟 ORDER 2: Fully Paid Cash Transaction (Fast Track Route)
+        # 50 Packets of Maggi * 14 = 700.00 total
         order2 = models.Order(
-            total_amount=Decimal("700.00"), payment_method="CASH", payment_status="PAID",
+            total_amount=Decimal("700.00"),
+            amount_paid=Decimal("700.00"),
+            amount_pending=Decimal("0.00"),
+            payment_method="CASH",
+            payment_status="PAID",
+            customer_info="Walk-in Customer",
             timestamp=datetime.datetime.utcnow()
         )
         db.add(order2)
@@ -111,8 +114,54 @@ def seed_database():
         p3.current_quantity -= Decimal("50.00")
         db.add(models.StockTransaction(product_id=p3.id, quantity_changed=Decimal("-50.00"), type="SALE", notes=f"Order #{order2.id}"))
 
+
+        # 🌟 ORDER 3: REAL-WORLD PARTIAL UDHAAR DEAL (Khata Track Route)
+        # 1 Keyboard (3500.00) + 5 KG Sugar (5 * 44 = 220.00) = 3720.00 total
+        # Customer pays ₹1500 upfront down payment, balances ₹2220 to Khata Ledger
+        order3 = models.Order(
+            total_amount=Decimal("3720.00"),
+            amount_paid=Decimal("1500.00"),
+            amount_pending=Decimal("2220.00"),
+            payment_method="PARTIAL",
+            payment_status="PARTIAL",
+            customer_info="Gurpreet Singh (9812345678)",
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(order3)
+        db.flush()
+        
+        oi4 = models.OrderItem(order_id=order3.id, product_id=p2.id, quantity=Decimal("1.00"), unit_price=Decimal("3500.00"))
+        oi5 = models.OrderItem(order_id=order3.id, product_id=p4.id, quantity=Decimal("5.00"), unit_price=Decimal("44.00"))
+        db.add_all([oi4, oi5])
+        
+        p2.current_quantity -= Decimal("1.00")
+        p4.current_quantity -= Decimal("5.00")
+        db.add(models.StockTransaction(product_id=p2.id, quantity_changed=Decimal("-1.00"), type="SALE", notes=f"Order #{order3.id} | Credit Account: Gurpreet Singh"))
+        db.add(models.StockTransaction(product_id=p4.id, quantity_changed=Decimal("-5.00"), type="SALE", notes=f"Order #{order3.id} | Credit Account: Gurpreet Singh"))
+
+
+        # 🌟 ORDER 4: 100% UNPAID FULL CREDIT TRANSACTION (Pure Udhaar Line)
+        # 2 Aloe Vera Face Wash * 180 = 360.00 total. Pays 0 upfront.
+        order4 = models.Order(
+            total_amount=Decimal("360.00"),
+            amount_paid=Decimal("0.00"),
+            amount_pending=Decimal("360.00"),
+            payment_method="CREDIT",
+            payment_status="UNPAID",
+            customer_info="Aman Saini (9464512345)",
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(order4)
+        db.flush()
+        
+        oi6 = models.OrderItem(order_id=order4.id, product_id=p6.id, quantity=Decimal("2.00"), unit_price=Decimal("180.00"))
+        db.add(oi6)
+        
+        p6.current_quantity -= Decimal("2.00")
+        db.add(models.StockTransaction(product_id=p6.id, quantity_changed=Decimal("-2.00"), type="SALE", notes=f"Order #{order4.id} | Full Credit Line: Aman Saini"))
+
         db.commit()
-        print("🎉 Database successfully seeded with rich, unit-aware mock retail data!")
+        print("🎉 Database successfully seeded with rich, split-ledger, and unit-aware mock retail logs!")
         
     except Exception as e:
         db.rollback()

@@ -1,9 +1,11 @@
 from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
-import datetime
+from datetime import datetime, timezone  # 🌟 Modern timezone-aware imports
 from app.database import Base
 
+
 # 1. CATEGORY MODEL
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -11,26 +13,24 @@ class Category(Base):
     name = Column(String, nullable=False)
     parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
-    # Self-referential relationship for nested categories (e.g., Electronics -> Phones)
     subcategories = relationship("Category", backref="parent", remote_side=[id])
     products = relationship("Product", back_populates="category")
 
 
+
 # 2. PRODUCT MODEL
+
 class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
-    barcode = Column(String, unique=True, index=True, nullable=True)     # 🌟 Added for scanner setup
+    barcode = Column(String, unique=True, index=True, nullable=True)
     name = Column(String, nullable=False)
-    brand = Column(String, index=True, default="Local")                 # 🌟 Added for multi-brand handling
-    unit_type = Column(String, default="PIECE", nullable=False)         # 🌟 Added (e.g., PIECE, KG, METER)
+    brand = Column(String, index=True, default="Local")
+    unit_type = Column(String, default="PIECE", nullable=False)
     
-    # Financial fields updated to secure Numeric types
     cost_price = Column(Numeric(10, 2), nullable=False)
     selling_price = Column(Numeric(10, 2), nullable=False)
-    
-    # 🌟 Changed from Integer to Numeric so the shopkeeper can hold "150.50" kg of loose sugar
     current_quantity = Column(Numeric(10, 2), default=0.00, nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
 
@@ -44,17 +44,23 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # 💰 The Financial Split Matrix
-    total_amount = Column(Numeric(10, 2), nullable=False)     # The absolute bill total
-    amount_paid = Column(Numeric(10, 2), default=0.00)       # Physical currency received in hand
-    amount_pending = Column(Numeric(10, 2), default=0.00)    # The remaining Udhaar credit balance
+    total_amount = Column(Numeric(10, 2), nullable=False)
+    amount_paid = Column(Numeric(10, 2), default=0.00)
+    amount_pending = Column(Numeric(10, 2), default=0.00)
     
-    # 💳 Metadata & Tracking Tokens
-    payment_method = Column(String, nullable=False)          # "CASH", "ONLINE", "PARTIAL", or "CREDIT"
-    customer_info = Column(String, nullable=True)            # Identity tracker: "Name (Phone)"
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    payment_method = Column(String, nullable=False) # CASH, ONLINE, PARTIAL, CREDIT
+    payment_status = Column(String, default="PAID") # PAID, PARTIAL, UNPAID
+    customer_info = Column(String, nullable=True)
+    
+    # 🌟 Fixed: Using lambda with timezone.utc to avoid the AttributeError
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-# 4. ORDER ITEM MODEL (Receipt Breakdown)
+    items = relationship("OrderItem", back_populates="order")
+
+
+
+# 4. ORDER ITEM MODEL
+
 class OrderItem(Base):
     __tablename__ = "order_items"
 
@@ -62,35 +68,40 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     
-    # 🌟 Changed from Integer to Numeric so a customer can buy "1.50" kg of sugar or "2.25" meters of wire
     quantity = Column(Numeric(10, 2), nullable=False)
-    unit_price = Column(Numeric(10, 2), nullable=False)   # Updated to Numeric
+    unit_price = Column(Numeric(10, 2), nullable=False)
 
     order = relationship("Order", back_populates="items")
 
 
-# 5. STOCK TRANSACTION MODEL (Audit Log)
+
+# 5. STOCK TRANSACTION MODEL
+
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
 
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    type = Column(String, nullable=False)                  # "SALE", "RESTOCK", "WASTE"
-    
-    # 🌟 Changed from Integer to Numeric to record precise timeline changes (e.g., logs -1.50 for a checkout sale)
+    type = Column(String, nullable=False)
     quantity_changed = Column(Numeric(10, 2), nullable=False)     
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # 🌟 Fixed: Standardizing timestamp logic
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     notes = Column(String, nullable=True)
 
 
-# 6. FINANCE LEDGER MODEL (Cash Book)
+
+# 6. FINANCE LEDGER MODEL
+
 class FinanceLedger(Base):
     __tablename__ = "finance_ledger"
 
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(String, nullable=False)                  # "INCOME" or "EXPENSE"
-    amount = Column(Numeric(10, 2), nullable=False)        # Updated to Numeric
-    category = Column(String, nullable=False)              # e.g., "Customer Sale", "Rent", "Electricity"
-    is_automated = Column(Boolean, default=True)           # True if generated by checkout, False if manual
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    type = Column(String, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    category = Column(String, nullable=False)
+    is_automated = Column(Boolean, default=True)
+    
+    # 🌟 Fixed: Standardizing timestamp logic
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     notes = Column(String, nullable=True)

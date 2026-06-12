@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apna Bazar - Category Management</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+    <nav class="bg-blue-600 text-white shadow-md px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-folder-tree text-2xl"></i>
+            <span class="text-xl font-bold tracking-wide">Apna Bazar Control Tower</span>
+        </div>
+        <div class="flex space-x-4 text-sm font-medium">
+            <a href="index.html" class="px-3 py-2 rounded hover:bg-blue-700 transition"><i class="fa-solid fa-file-invoice-dollar mr-1"></i> Billing Counter</a>
+            <a href="products.html" class="px-3 py-2 rounded hover:bg-blue-700 transition"><i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory</a>
+            <a href="categories.html" class="bg-blue-800 px-3 py-2 rounded transition"><i class="fa-solid fa-tags mr-1"></i> Categories</a>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-6 mt-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                    <i class="fa-solid fa-plus-circle text-blue-500 mr-1"></i> Create Category
+                </h3>
+                
+                <form id="category-form" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Category Name</label>
+                        <input type="text" id="category-name" placeholder="e.g., Packed Snacks, Dairy" required
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Parent Category (Optional)</label>
+                        <select id="parent-category-select" 
+                                class="w-full px-3 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-400 outline-none text-sm text-gray-700">
+                            <option value="">-- No Parent (Root Category) --</option>
+                        </select>
+                        <p class="text-gray-400 text-[11px] mt-1">Use this to nest categories (e.g., Groceries → Dairy)</p>
+                    </div>
+
+                    <button type="submit" id="submit-btn"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition text-sm cursor-pointer shadow-sm">
+                        Save Category Configuration
+                    </button>
+                </form>
+            </div>
+
+            <div class="lg:grid lg:col-span-2 space-y-6">
+                
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800">Active Category Directory</h3>
+                            <p class="text-xs text-gray-400 mt-0.5">Click a category row to view its nested stock inventory</p>
+                        </div>
+                        <button onclick="fetchCategories()" class="text-blue-500 hover:text-blue-700 text-sm font-bold">
+                            <i class="fa-solid fa-rotate mr-1"></i> Sync Data
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-gray-50 text-xs text-gray-500 font-bold uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-4">ID</th>
+                                    <th class="p-4">Category Tree Name</th>
+                                    <th class="p-4">Parent Assignment</th>
+                                    <th class="p-4 text-center">Action Matrix</th>
+                                </tr>
+                            </thead>
+                            <tbody id="categories-table-body" class="divide-y divide-gray-100 text-sm text-gray-700">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="product-preview-box" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hidden">
+                    <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800">
+                                Products linked to: <span id="selected-category-title" class="text-blue-600 underline">None</span>
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-0.5">Direct pricing modifications and stock balancing dashboard</p>
+                        </div>
+                        <span id="product-count-badge" class="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">0 Products</span>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-gray-50 text-xs text-gray-500 font-bold uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-4">Item Details</th>
+                                    <th class="p-4 text-right">Cost Price</th>
+                                    <th class="p-4 text-right">Selling Price</th>
+                                    <th class="p-4 text-center">Current Stock</th>
+                                    <th class="p-4 text-center">Quick Adjust</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-preview-table-body" class="divide-y divide-gray-100 text-sm text-gray-700">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE_URL = "http://localhost:8000";
+    </script>
+    <script src="js/categories.js"></script>
+</body>
+</html>

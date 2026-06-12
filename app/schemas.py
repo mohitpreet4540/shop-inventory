@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 from decimal import Decimal
 import datetime
@@ -45,22 +45,45 @@ class ProductResponseSchema(BaseModel):
 
 # --- CHECKOUT / CART SCHEMAS ---
 class CartItemSchema(BaseModel):
-    # 🌟 UPDATED: Both are optional now, but the router validates that at least one is present
     product_id: Optional[int] = None       
-    barcode: Optional[str] = None          # 🌟 Added so the barcode scanner can pass raw data strings
+    barcode: Optional[str] = None          
     quantity: Decimal = Field(..., gt=0)      
 
 class OrderCreateSchema(BaseModel):
-    payment_method: str  # "CASH" or "ONLINE"
+    payment_method: str  # "CASH", "ONLINE", "PARTIAL", or "CREDIT"
     items: List[CartItemSchema]
+    
+    # 💰 🌟 NEW: Structured Financial Split Layer
+    total_amount: Decimal = Field(..., ge=0, description="The complete value of the bill invoice")
+    amount_paid: Decimal = Field(..., ge=0, description="Actual physical or digital cash received upfront")
+    amount_pending: Decimal = Field(..., ge=0, description="The outstanding debt ledger balance (Udhaar)")
+    customer_info: Optional[str] = Field(default="Walk-in Customer", description="Format tracking line: 'Name (Phone)'")
+
+    # 🛡️ 🌟 NEW: Strict Mathematical Data Guard Validator
+    @model_validator(mode='after')
+    def validate_ledger_math(self) -> 'OrderCreateSchema':
+        # 1. Check if the math balances down correctly
+        if self.amount_paid + self.amount_pending != self.total_amount:
+            raise ValueError(
+                f"Ledger Math Failure: Amount Paid (₹{self.amount_paid}) + Amount Pending (₹{self.amount_pending}) "
+                f"must equal Total Amount (₹{self.total_amount})."
+            )
+        
+        # 2. Check if Udhaar is registered anonymously
+        if self.amount_pending > 0 and (not self.customer_info or self.customer_info == "Walk-in Customer"):
+            raise ValueError(
+                "Security Mandate: Cannot process outstanding balance (Udhaar) under an anonymous 'Walk-in Customer' profile."
+            )
+            
+        return self
 
 
-# 🌟 NEW: Added to represent individual row outputs on a billing invoice receipt
+# 🌟 NEW: Updated to match individual row outputs with ledger split models
 class OrderItemResponseSchema(BaseModel):
     product_id: int
     product_name: str                      
     brand: str                             
-    unit_type: str                         # Outputs "KG", "METER", or "PIECE"
+    unit_type: str                         
     quantity: Decimal
     unit_price: Decimal
 
@@ -71,10 +94,13 @@ class OrderItemResponseSchema(BaseModel):
 class OrderResponseSchema(BaseModel):
     id: int
     total_amount: Decimal  
+    amount_paid: Decimal     # 🌟 Added to match updated database layout
+    amount_pending: Decimal  # 🌟 Added to track specific invoice debts
     payment_method: str
     payment_status: str
+    customer_info: Optional[str] = "Walk-in Customer"
     timestamp: datetime.datetime
-    items: List[OrderItemResponseSchema]   # 🌟 Injected nested structure to display exactly what items were sold
+    items: List[OrderItemResponseSchema]   
     
     class Config:
         from_attributes = True
@@ -85,7 +111,6 @@ class StockIncrementRequest(BaseModel):
     product_id: int
     quantity: Decimal = Field(..., gt=0, description="Must be greater than zero") 
     notes: str = Field(default="Manual restock", description="Wholesale delivery stock replenishment")
-    # 🌟 NEW: Optional price updates
     cost_price: Optional[Decimal] = Field(None, gt=0)
     selling_price: Optional[Decimal] = Field(None, gt=0)
     
@@ -105,8 +130,12 @@ class TopSellingProductSchema(BaseModel):
     class Config:
         from_attributes = True        
 
+
+# --- UPDATED EXECUTIVE DASHBOARD METRICS ---
 class DashboardAnalyticsSchema(BaseModel):
-    total_sales_revenue: Decimal
+    total_sales_revenue: Decimal   # Total booked invoices turnover value
+    total_liquid_received: Decimal # 🌟 NEW: Total hard liquid cash collected in hand
+    total_market_debt: Decimal     # 🌟 NEW: Total outstanding credit value hanging outside (Udhaar)
     total_purchase_spend: Decimal
     overall_net_profit: Decimal
     top_selling_product: Optional[TopSellingProductSchema] = None

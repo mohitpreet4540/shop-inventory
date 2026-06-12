@@ -34,12 +34,12 @@ def create_product(product_data: ProductCreateSchema, db: Session = Depends(get_
         # 🌟 Unpacking brand, barcode, and unit_type values into the DB engine
         new_product = Product(
             name=product_data.name, 
-            brand=product_data.brand,           # 👈 Injected brand section mapping
-            barcode=product_data.barcode,       # 👈 Injected physical barcode registry mapping
-            unit_type=product_data.unit_type,   # 👈 Injected unit selection mapping (KG, METER, PIECE)
+            brand=product_data.brand,           
+            barcode=product_data.barcode,       
+            unit_type=product_data.unit_type,   
             cost_price=product_data.cost_price,
             selling_price=product_data.selling_price, 
-            current_quantity=product_data.current_quantity, # 🌟 Safely registers incoming Decimal weights
+            current_quantity=product_data.current_quantity, 
             category_id=product_data.category_id
         )
         db.add(new_product)
@@ -49,7 +49,7 @@ def create_product(product_data: ProductCreateSchema, db: Session = Depends(get_
         if new_product.current_quantity > 0:
             initial_stock_log = StockTransaction(
                 product_id=new_product.id,
-                quantity_changed=new_product.current_quantity, # Logs fractional decimal setups cleanly
+                quantity_changed=new_product.current_quantity, 
                 type="INITIAL_STOCK",
                 notes="Initial inventory setup upon product creation"
             )
@@ -64,7 +64,7 @@ def create_product(product_data: ProductCreateSchema, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=f"Product creation failed: {str(e)}")
 
 
-# 3. STOCK REFILL LOGIC (DECIMAL COMPATIBLE)
+# 3. UPDATED STOCK REFILL LOGIC (WITH DYNAMIC PRICE MODIFICATIONS)
 @router.post("/add-stock/")
 def add_product_stock(payload: StockIncrementRequest, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == payload.product_id).first()
@@ -72,14 +72,30 @@ def add_product_stock(payload: StockIncrementRequest, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="Product not found")
     
     try:
-        # 🌟 Arithmetic operations smoothly combine fixed-point values (e.g. 50.50 + 20.00)
+        # 1. Arithmetic operations smoothly combine fixed-point quantities
         product.current_quantity += payload.quantity
         
+        # 📝 TRACK BATCH NOTE OVERRIDES FOR LOGS
+        log_notes = payload.notes
+        
+        # 🌟 DYNAMIC PRICE OVERRIDES LAYER
+        # Check if new cost or retail prices were supplied in the incoming network payload packet
+        if payload.cost_price is not None:
+            old_cost = product.cost_price
+            product.cost_price = payload.cost_price
+            log_notes += f" | Cost Shifted: ₹{old_cost} -> ₹{payload.cost_price}"
+            
+        if payload.selling_price is not None:
+            old_selling = product.selling_price
+            product.selling_price = payload.selling_price
+            log_notes += f" | Retail Shifted: ₹{old_selling} -> ₹{payload.selling_price}"
+        
+        # 2. Log the comprehensive transaction history record entry
         stock_log = StockTransaction(
             product_id=product.id,
             quantity_changed=payload.quantity,
             type="RESTOCK",
-            notes=payload.notes  
+            notes=log_notes  
         )
         db.add(stock_log)
         db.commit()
@@ -87,7 +103,7 @@ def add_product_stock(payload: StockIncrementRequest, db: Session = Depends(get_
         
         return {
             "status": "success",
-            "message": f"Successfully added {payload.quantity} {product.unit_type} to {product.name} ({product.brand})", # 🌟 Dynamic response string update
+            "message": f"Successfully refilled {payload.quantity} {product.unit_type} of {product.name} ({product.brand}). Base configuration price matrices updated.",
             "updated_stock": product.current_quantity
         }
     except Exception as e:
