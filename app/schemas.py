@@ -167,3 +167,8 @@ class ProductSearchResponseSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+        # --- PRODUCT PRICE UPDATE SCHEMA ---
+class ProductPriceUpdateSchema(BaseModel):
+    selling_price: Decimal = Field(..., gt=0, description="The new retail selling price must be greater than zero")
+    cost_price: Optional[Decimal] = Field(None, gt=0, description="Optional updated wholesale cost price")

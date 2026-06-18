@@ -1,11 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal  
-import datetime
+from datetime import datetime, timezone  # 🌟 Swapped to standard timezone structures
 from app.database import get_db
 from app.models import Product, Order, OrderItem, StockTransaction
-
-# 🌟 Explicitly import the updated schemas
 from app.schemas import OrderCreateSchema, OrderResponseSchema
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -19,11 +17,9 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
     stock_logs_to_create = []
     
     try:
-        # STEP 1: Loop and validate stock levels using ID OR Barcode
         for item in payload.items:
             product = None
             
-            # 🌟 BARCODE HANDLE LOGIC: Dynamic lookup priority
             if item.barcode:
                 product = db.query(Product).filter(Product.barcode == item.barcode).first()
                 if not product:
@@ -35,22 +31,18 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
             else:
                 raise HTTPException(status_code=400, detail="Each cart item must contain either a product_id or a barcode.")
             
-            # Safe Decimal inventory quantity evaluation
             if product.current_quantity < item.quantity:
                 raise HTTPException(
                     status_code=400, 
                     detail=f"Inadequate inventory for '{product.name}' ({product.brand}). Requested: {item.quantity} {product.unit_type}, Available: {product.current_quantity}"
                 )
             
-            # Precise Decimal calculation for item line totals
             item_total = product.selling_price * item.quantity
             running_total += item_total  
             
-            # Stage updates in memory
             product.current_quantity -= item.quantity
             products_to_update.append(product)
             
-            # Save product context fields along for the receipt build later
             order_items_to_create.append({
                 "product": product,
                 "quantity": item.quantity,
@@ -58,22 +50,18 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
             })
             stock_logs_to_create.append((product.id, item.quantity))
 
-        # 🛡️ SYSTEM INTEGRITY GUARD: Cross-verify frontend total calculations with backend product prices
-        # Allow small rounding float discrepancy up to 0.01 if decimals mismatch slightly
         if abs(running_total - payload.total_amount) > Decimal("0.01"):
             raise HTTPException(
                 status_code=400,
                 detail=f"Financial Integrity Breach: Calculated total (₹{running_total}) does not match payload total (₹{payload.total_amount})."
             )
 
-        # 📊 DYNAMIC PAYMENT STATUS ENGINE
-        # If there is remaining Udhaar balance, label status as "PARTIAL" or "UNPAID", else fully "PAID"
         if payload.amount_pending > 0:
             calculated_status = "PARTIAL" if payload.amount_paid > 0 else "UNPAID"
         else:
             calculated_status = "PAID"
 
-        # STEP 2: Create Parent Order Entry with split ledger parameters
+        # 🌟 FIXED: Created standard timezone-aware UTC timestamp entry
         new_order = Order(
             total_amount=payload.total_amount,
             amount_paid=payload.amount_paid,
@@ -81,12 +69,11 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
             payment_method=payload.payment_method.upper(),
             payment_status=calculated_status,
             customer_info=payload.customer_info,
-            timestamp=datetime.datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         db.add(new_order)
         db.flush() 
 
-        # STEP 3: Save child rows and map dynamic string data for response execution
         receipt_items_breakdown = []
         for line in order_items_to_create:
             prod = line["product"]
@@ -99,7 +86,6 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
             )
             db.add(oi)
             
-            # 🌟 BUILD RECEIPT: Capture real item names, brands, and units right now
             receipt_items_breakdown.append({
                 "product_id": prod.id,
                 "product_name": prod.name,
@@ -109,7 +95,6 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
                 "unit_price": line["unit_price"]
             })
 
-        # Log individual item stock reduction movements safely
         for prod_id, qty in stock_logs_to_create:
             log = StockTransaction(
                 product_id=prod_id,
@@ -121,7 +106,6 @@ def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
 
         db.commit() 
         
-        # 🌟 STEP 4: Return structural data mapping perfectly to the new Response contract
         return {
             "id": new_order.id,
             "total_amount": new_order.total_amount,

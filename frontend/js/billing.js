@@ -1,127 +1,123 @@
 // ==========================================
 // 1. STATE MANAGEMENT & DOM INITIALIZATION
 // ==========================================
-let cart = []; // The temporary "memory" bank for the current bill
+let cart = []; 
 
 const barcodeInput = document.getElementById('barcode-input');
 const searchInput = document.getElementById('search-input');
-const searchDropdown = document.getElementById('search-results-dropdown'); // 🌟 The floating box
+const searchDropdown = document.getElementById('search-results-dropdown'); 
 const cartTableBody = document.getElementById('cart-table-body');
 const emptyCartView = document.getElementById('empty-cart-view');
 const grandTotalDisplay = document.getElementById('summary-grand-total');
 const totalItemsDisplay = document.getElementById('summary-total-items');
 const checkoutBtn = document.getElementById('checkout-btn');
 
-// Payment Mode UI Cards
-const payCashLabel = document.getElementById('pay-cash-label');
-const payOnlineLabel = document.getElementById('pay-online-label');
-const radioCash = document.getElementById('radio-cash');
-const radioOnline = document.getElementById('radio-online');
+// Extended split-ledger inputs
+const checkoutAmountPaid = document.getElementById('checkout-amount-paid');
+const checkoutAmountPending = document.getElementById('checkout-amount-pending');
+const customerDetailsInput = document.getElementById('customer-details-input');
+const paymentMethodSelect = document.getElementById('payment-method-select');
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (barcodeInput) barcodeInput.focus();
+    if (checkoutAmountPaid) {
+        checkoutAmountPaid.addEventListener('input', runSplitPaymentCalculations);
+    }
+});
 
 // ==========================================
 // 2. HARDWARE INTEGRATION (BARCODE SCANNER)
 // ==========================================
-barcodeInput.addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') {
-        const barcode = barcodeInput.value.trim();
-        if (barcode) {
-            fetchProductDirectly(barcode);
-            barcodeInput.value = ''; // Instantly clear for next barcode scan
+if (barcodeInput) {
+    barcodeInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            const barcode = barcodeInput.value.trim();
+            if (barcode) {
+                fetchProductDirectly(barcode);
+                barcodeInput.value = ''; 
+            }
         }
-    }
-});
+    });
+}
 
-// Directly adds scanned item to cart without showing a dropdown
 async function fetchProductDirectly(barcodeValue) {
     try {
         const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(barcodeValue)}`);
-        const data = await response.json();
-
-        if (response.ok && data.length > 0) {
-            addToCart(data[0]); 
+        if (!response.ok) return;
+        const matchingProducts = await response.json();
+        
+        if (matchingProducts.length > 0) {
+            addItemToCart(matchingProducts[0]);
         } else {
-            alert(`Scanned item not found: "${barcodeValue}"`);
+            alert(`No items mapped to barcode string: ${barcodeValue}`);
         }
     } catch (error) {
-        console.error("Scanner communication failure:", error);
+        console.error("Scanner stream communication interruption:", error);
     }
 }
 
 // ==========================================
-// 3. MODERN INTERACTIVE AUTOCOMPLETE SEARCH
+// 3. LIVE SEARCH FILTER LAYER
 // ==========================================
-// This fires instantly on EVERY single key you type!
-searchInput.addEventListener('input', async function () {
-    const textQuery = searchInput.value.trim();
-    
-    // If the search bar is wiped empty, hide the dropdown instantly
-    if (!textQuery) {
-        hideDropdown();
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(textQuery)}`);
-        const products = await response.json();
-
-        if (response.ok && products.length > 0) {
-            searchDropdown.classList.remove('hidden');
-            searchDropdown.innerHTML = ''; // Clear older matches
-
-            // Loop and build visual cards inside the floating dropdown
-            products.forEach(product => {
-                const itemRow = `
-                    <div class="p-3 border-b border-gray-100 hover:bg-blue-50 cursor-pointer flex justify-between items-center transition"
-                         onclick="selectDropdownItem(${JSON.stringify(product).replace(/"/g, '&quot;')})">
-                        <div>
-                            <span class="font-bold text-gray-800">${product.name}</span>
-                            <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded ml-2">${product.brand}</span>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-sm font-bold text-blue-600">₹${parseFloat(product.selling_price).toFixed(2)}</div>
-                            <div class="text-xs ${product.current_quantity <= 5 ? 'text-red-500 font-bold' : 'text-gray-400'}">
-                                Stock: ${product.current_quantity} ${product.unit_type}
-                            </div>
-                        </div>
-                    </div>
-                `;
-                searchDropdown.insertAdjacentHTML('beforeend', itemRow);
-            });
-        } else {
-            // Show a friendly "No results" banner inside the dropdown
-            searchDropdown.classList.remove('hidden');
-            searchDropdown.innerHTML = `<div class="p-4 text-sm text-gray-400 text-center font-medium">No products match "${textQuery}"</div>`;
+if (searchInput) {
+    searchInput.addEventListener('input', async () => {
+        const query = searchInput.value.trim();
+        if (!query) {
+            hideSearchDropdown();
+            return;
         }
-    } catch (error) {
-        console.error("Autocomplete backend failure:", error);
-    }
-});
 
-// Executes when the shopkeeper clicks an item inside the dropdown list
-window.selectDropdownItem = function(product) {
-    addToCart(product);       
-    searchInput.value = '';   
-    hideDropdown();
-};
+        try {
+            const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(query)}`);
+            const products = await response.json();
 
-function hideDropdown() {
-    searchDropdown.classList.add('hidden');
+            if (response.ok && products.length > 0) {
+                renderSearchDropdown(products);
+            } else {
+                hideSearchDropdown();
+            }
+        } catch (error) {
+            console.error("Dropdown filter failure:", error);
+        }
+    });
+}
+
+function renderSearchDropdown(products) {
     searchDropdown.innerHTML = '';
-    barcodeInput.focus(); // Keep focus on the primary barcode element
+    searchDropdown.classList.remove('hidden');
+
+    products.forEach(product => {
+        const qty = parseFloat(product.current_quantity || 0);
+        const itemElement = document.createElement('div');
+        itemElement.className = "p-2 hover:bg-gray-100 cursor-pointer text-xs border-b flex justify-between items-center";
+        itemElement.innerHTML = `
+            <div>
+                <span class="font-bold text-gray-800">${product.name}</span>
+                <span class="text-gray-400 text-[10px] ml-1">[${product.brand || 'Generic'}]</span>
+            </div>
+            <div class="text-right">
+                <span class="text-blue font-bold mr-2">₹${parseFloat(product.selling_price).toFixed(2)}</span>
+                <span class="${qty <= 0 ? 'text-red-500 font-bold' : 'text-gray-500'}">Qty: ${qty.toFixed(0)}</span>
+            </div>
+        `;
+        itemElement.addEventListener('click', () => {
+            addItemToCart(product);
+            searchInput.value = '';
+            hideSearchDropdown();
+        });
+        searchDropdown.appendChild(itemElement);
+    });
 }
 
-// Automatically dismiss the dropdown if you click outside the boxes
-document.addEventListener('click', function (e) {
-    if (e.target !== searchInput && e.target !== searchDropdown) {
-        searchDropdown.classList.add('hidden');
-    }
-});
-
+function hideSearchDropdown() {
+    searchDropdown.innerHTML = '';
+    searchDropdown.classList.add('hidden');
+}
 
 // ==========================================
-// 4. ACTIVE BILL CART MANAGEMENT MATRIX
+// 4. CART INTERACTION CORE
 // ==========================================
-function addToCart(product) {
+function addItemToCart(product) {
     const existingItem = cart.find(item => item.id === product.id);
     
     if (existingItem) {
@@ -131,209 +127,157 @@ function addToCart(product) {
             id: product.id,
             name: product.name,
             brand: product.brand,
-            unit_type: product.unit_type,
+            barcode: product.barcode,
+            unit_type: product.unit_type || 'PCS',
             selling_price: parseFloat(product.selling_price),
-            quantity: 1,
-            barcode: product.barcode
+            quantity: 1
         });
     }
     renderCart();
 }
 
-window.updateQuantity = function(id, newQty) {
-    const item = cart.find(i => i.id === id);
-    if (item) {
-        item.quantity = parseFloat(newQty) || 0;
-        if (item.quantity <= 0) {
-            removeFromCart(id);
-        } else {
-            renderCart();
-        }
+function updateQuantity(productId, newQty) {
+    const qty = parseFloat(newQty);
+    const itemIndex = cart.findIndex(item => item.id === productId);
+    
+    if (itemIndex === -1) return;
+
+    if (qty <= 0 || isNaN(qty)) {
+        cart.splice(itemIndex, 1);
+    } else {
+        cart[itemIndex].quantity = qty;
     }
-};
-
-window.removeFromCart = function(id) {
-    cart = cart.filter(item => item.id !== id);
     renderCart();
-};
+}
 
-document.getElementById('clear-cart-btn').addEventListener('click', () => {
-    cart = [];
-    renderCart();
-});
-
-// ==========================================
-// 5. RENDERING THE DYNAMIC LAYOUT TABLE
-// ==========================================
 function renderCart() {
     cartTableBody.innerHTML = '';
-    let grandTotal = 0;
-    let totalItems = 0;
-
+    
     if (cart.length === 0) {
         emptyCartView.classList.remove('hidden');
-        checkoutBtn.disabled = true;
-    } else {
-        emptyCartView.classList.add('hidden');
-        checkoutBtn.disabled = false;
-
-        cart.forEach(item => {
-            const subtotal = item.quantity * item.selling_price;
-            grandTotal += subtotal;
-            totalItems += 1;
-
-            const row = `
-                <tr class="hover:bg-gray-50 transition">
-                    <td class="p-4">
-                        <div class="font-bold text-gray-800">${item.name}</div>
-                        <div class="text-xs text-gray-500">${item.brand} | ${item.barcode || 'Metric Loose Item'}</div>
-                    </td>
-                    <td class="p-4 text-center"><span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">${item.unit_type}</span></td>
-                    <td class="p-4 text-right">₹${item.selling_price.toFixed(2)}</td>
-                    <td class="p-4">
-                        <input type="number" step="0.01" value="${item.quantity}" 
-                            class="w-24 border rounded px-2 py-1 text-center font-bold bg-gray-50"
-                            onchange="updateQuantity(${item.id}, this.value)">
-                    </td>
-                    <td class="p-4 text-right font-bold text-blue-600">₹${subtotal.toFixed(2)}</td>
-                    <td class="p-4 text-center">
-                        <button onclick="removeFromCart(${item.id})" class="text-red-400 hover:text-red-600 cursor-pointer">
-                            <i class="fa-solid fa-circle-xmark text-lg"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-            cartTableBody.insertAdjacentHTML('beforeend', row);
-        });
+        grandTotalDisplay.innerText = "₹0.00";
+        totalItemsDisplay.innerText = "0";
+        if (checkoutAmountPaid) checkoutAmountPaid.value = "0";
+        if (checkoutAmountPending) checkoutAmountPending.innerText = "₹0.00";
+        return;
     }
 
-    grandTotalDisplay.innerText = grandTotal.toFixed(2);
-    totalItemsDisplay.innerText = totalItems;
+    emptyCartView.classList.add('hidden');
+    let runningGrandTotal = 0;
+    let runningTotalItems = 0;
+
+    cart.forEach(item => {
+        const rowTotal = item.selling_price * item.quantity;
+        runningGrandTotal += rowTotal;
+        runningTotalItems += item.quantity;
+
+        const row = document.createElement('tr');
+        row.className = "border-b text-xs hover:bg-gray-50";
+        row.innerHTML = `
+            <td class="p-3">
+                <span class="font-bold text-gray-800">${item.name}</span>
+                <p class="text-[10px] text-gray-400 font-medium">${item.brand || 'Generic'}</p>
+            </td>
+            <td class="p-3 font-mono">₹${item.selling_price.toFixed(2)}</td>
+            <td class="p-3">
+                <div class="flex items-center gap-1">
+                    <input type="number" class="w-16 border rounded p-1 text-center font-bold" value="${item.quantity}" min="0.1" step="any" onchange="updateQuantity(${item.id}, this.value)">
+                    <span class="text-[10px] text-gray-400 font-medium">${item.unit_type}</span>
+                </div>
+            </td>
+            <td class="p-3 font-mono font-bold text-gray-800">₹${rowTotal.toFixed(2)}</td>
+            <td class="p-3 text-center">
+                <button class="text-red-500 hover:text-red-700 transition" onclick="updateQuantity(${item.id}, 0)">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </td>
+        `;
+        cartTableBody.appendChild(row);
+    });
+
+    grandTotalDisplay.innerText = `₹${runningGrandTotal.toFixed(2)}`;
+    totalItemsDisplay.innerText = runningTotalItems.toFixed(0);
+    
+    runSplitPaymentCalculations();
+}
+
+function runSplitPaymentCalculations() {
+    const totalAmount = parseFloat(grandTotalDisplay.innerText.replace('₹', '')) || 0;
+    let amountPaid = parseFloat(checkoutAmountPaid.value);
+    
+    if (isNaN(amountPaid) || amountPaid < 0) amountPaid = 0;
+    if (amountPaid > totalAmount) {
+        amountPaid = totalAmount;
+        checkoutAmountPaid.value = totalAmount.toFixed(2);
+    }
+
+    const residualDebt = totalAmount - amountPaid;
+    if (checkoutAmountPending) {
+        checkoutAmountPending.innerText = `₹${residualDebt.toFixed(2)}`;
+    }
 }
 
 // ==========================================
-// 6. PAYMENT MODE UI SWITCH CONTROLLERS
+// 5. ASYNC ORDER SUBMISSION DISPATCH PIPELINE
 // ==========================================
-payCashLabel.addEventListener('click', () => {
-    radioCash.checked = true;
-    payCashLabel.className = "border-2 border-blue-500 bg-blue-50 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer shadow-sm transition";
-    payCashLabel.querySelector('i').className = "fa-solid fa-money-bill-wave text-xl text-blue-600 mb-1";
-    payCashLabel.querySelector('span').className = "text-sm font-bold text-blue-700";
-    
-    payOnlineLabel.className = "border border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition hover:bg-gray-50";
-    payOnlineLabel.querySelector('i').className = "fa-solid fa-qrcode text-xl text-gray-500 mb-1";
-    payOnlineLabel.querySelector('span').className = "text-sm font-bold text-gray-600";
-});
-
-payOnlineLabel.addEventListener('click', () => {
-    radioOnline.checked = true;
-    payOnlineLabel.className = "border-2 border-blue-500 bg-blue-50 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer shadow-sm transition";
-    payOnlineLabel.querySelector('i').className = "fa-solid fa-qrcode text-xl text-blue-600 mb-1";
-    payOnlineLabel.querySelector('span').className = "text-sm font-bold text-blue-700";
-    
-    payCashLabel.className = "border border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition hover:bg-gray-50";
-    payCashLabel.querySelector('i').className = "fa-solid fa-money-bill-wave text-xl text-gray-500 mb-1";
-    payCashLabel.querySelector('span').className = "text-sm font-bold text-gray-600";
-});
-
-// ==========================================
-// 7. FIXED: DUAL-TRACK LEDGER CHECKOUT TRANSACTION
-// ==========================================
-checkoutBtn.addEventListener('click', async () => {
-    if (cart.length === 0) return alert("Cart validation error.");
-
-    const totalBillAmount = parseFloat(grandTotalDisplay.innerText);
-    const primarySelectedMode = document.querySelector('input[name="payment_method"]:checked').value;
-    
-    let allocatedPaid = totalBillAmount;
-    let allocatedPending = 0.00;
-    let customerIdentityRecord = "Walk-in Customer";
-    let activePaymentType = primarySelectedMode;
-
-    // 🌟 ENHANCED CASH SECURITY CHECK
-    if (primarySelectedMode === 'CASH') {
-        const securityVerification = confirm(`💰 PHYSICAL CASH TRANSACTION CHECK\n\nTotal Bill Amount: ₹${totalBillAmount.toFixed(2)}\n\nHave you counted and physically received this cash inside the drawer till?`);
-        if (!securityVerification) return; 
-    }
-
-    // 🌟 CHOOSE INVOICE STATE PATHWAY: ASK FOR BOOK ENTRIES
-    const requestLedgerSplit = confirm("Is this an outstanding Credit line account profile order ('Udhaar' / Partial payment deal)?\n\n[OK = Yes, Cancel = Regular Full Payment]");
-
-    if (requestLedgerSplit) {
-        const nameInput = prompt("⚠️ CREDIT LOG MANDATE:\nEnter Customer Name & Phone Number:\n(e.g., Rajesh Kumar - 9876543210)");
-        
-        if (!nameInput || nameInput.trim() === "") {
-            alert("Checkout Blocked! Core accounting requires an identity token string to log outstanding debt.");
-            return;
-        }
-        customerIdentityRecord = nameInput.trim();
-
-        const cashDownPayment = prompt(`Invoice Total Value is ₹${totalBillAmount.toFixed(2)}.\n\nHow much cash/online money did this customer pay right now?\n(Enter 0 for 100% Full Udhaar Khata)`);
-        
-        if (cashDownPayment === null) return; 
-
-        const parsedDownPayment = parseFloat(cashDownPayment);
-        if (isNaN(parsedDownPayment) || parsedDownPayment < 0 || parsedDownPayment > totalBillAmount) {
-            alert("Data Integrity Error: Invalid input value. Amount paid must match financial balance limits.");
+if (checkoutBtn) {
+    checkoutBtn.addEventListener('click', async () => {
+        if (cart.length === 0) {
+            alert("POS cart register is currently empty.");
             return;
         }
 
-        allocatedPaid = parsedDownPayment;
-        allocatedPending = totalBillAmount - allocatedPaid;
-        activePaymentType = allocatedPaid > 0 ? "PARTIAL" : "CREDIT";
-    } else {
-        const casualTracking = prompt("Enter Customer Identity Notes [OPTIONAL]:\n(Leave blank for default Walk-in profile registration)");
-        if (casualTracking && casualTracking.trim() !== "") {
-            customerIdentityRecord = casualTracking.trim();
+        const totalAmount = parseFloat(grandTotalDisplay.innerText.replace('₹', ''));
+        const amountPaid = parseFloat(checkoutAmountPaid.value) || 0;
+        const amountPending = parseFloat(checkoutAmountPending.innerText.replace('₹', ''));
+        const customerInfo = customerDetailsInput.value.trim() || "Anonymous Retail Walk-in";
+        const paymentMethod = paymentMethodSelect.value;
+
+        // Security Risk Boundaries protection check
+        if (amountPending > 0 && customerInfo === "Anonymous Retail Walk-in") {
+            alert("🔒 High Risk: Khata ledger allocations cannot be authorized anonymously. Please provide a verified customer name/account.");
+            return;
         }
-    }
 
-    const comprehensiveOrderPayload = {
-        payment_method: activePaymentType,
-        total_amount: totalBillAmount,
-        amount_paid: allocatedPaid,
-        amount_pending: allocatedPending,
-        customer_info: customerIdentityRecord,
-        items: cart.map(item => ({
-            product_id: item.id,
-            quantity: item.quantity
-        }))
-    };
+        checkoutBtn.disabled = true;
 
-    try {
-        checkoutBtn.disabled = true; // Block double-click double processing loops
-        
-        const response = await fetch(`${API_BASE_URL}/orders/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(comprehensiveOrderPayload)
-        });
+        const comprehensiveOrderPayload = {
+            total_amount: totalAmount,
+            amount_paid: amountPaid,
+            amount_pending: amountPending,
+            payment_method: paymentMethod,
+            customer_info: customerInfo,
+            items: cart.map(item => ({
+                product_id: item.id,
+                barcode: item.barcode || null,
+                quantity: item.quantity
+            }))
+        };
 
-        // 🌟 FIX: Parse the JSON string stream into an object BEFORE evaluating status
-        const data = await response.json();
+        try {
+            const response = await fetch(`${API_BASE_URL}/orders/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(comprehensiveOrderPayload)
+            });
 
-        if (response.ok) {
-            let successMessage = `🎉 Transaction Finalized Safely!\n\nInvoice ID: #${data.id}\nTotal Bill: ₹${parseFloat(data.total_amount).toFixed(2)}\nPayment Status: ${data.payment_status}`;
-            
-            if (data.amount_pending > 0) {
-                successMessage += `\n\n📝 KHATA BALANCE RECORDED:\nAccount Holder: ${data.customer_info}\nPending Udhaar Ledger Debt: ₹${parseFloat(data.amount_pending).toFixed(2)}`;
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(`🎉 Order Finalized! Invoice ID: #${data.id}`);
+                cart = []; 
+                customerDetailsInput.value = '';
+                checkoutAmountPaid.value = '0';
+                renderCart();
+                if (barcodeInput) barcodeInput.focus(); 
+            } else {
+                alert("Checkout Rejected: " + (data.detail || "Validation fail"));
             }
-            
-            alert(successMessage);
-            cart = []; 
-            renderCart();
-            barcodeInput.focus(); 
-        } else {
-            // Intercept gracefully if a backend validation error (400/404/422) occurs
-            alert("Checkout Rejected by Backend Pipeline: " + (data.detail || "Validation check breakdown"));
+        } catch (error) {
+            console.error("Order payload submission drop:", error);
+            alert("Network connection dropped.");
+        } finally {
+            checkoutBtn.disabled = false;
         }
-    } catch (error) {
-        console.error("Frontend Communication Error Trace:", error);
-        alert("Frontend App Error: Connection interrupted or unhandled asset mapping.");
-    } finally {
-        checkoutBtn.disabled = false;
-    }
-});
-
-// Force automatic focus on page boot
-barcodeInput.focus();
+    });
+}

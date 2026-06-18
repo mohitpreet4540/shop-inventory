@@ -1,11 +1,10 @@
-// --- GLOBAL APPLICATION CONFIGURATIONS ---
 
-// The local address where your Dockerized FastAPI server runs
+// --- GLOBAL APPLICATION CONFIGURATIONS ---
 const API_BASE_URL = "http://localhost:8000";
 
 /**
  * Global helper function to handle API error responses cleanly.
- * This converts backend errors (like out of stock) into friendly alert messages for the shopkeeper.
+ * Converts backend validation or business-logic errors into clear feedback.
  */
 async function handleResponseError(response) {
     try {
@@ -14,7 +13,7 @@ async function handleResponseError(response) {
             return errorData.detail;
         }
     } catch (e) {
-        // Fallback if response isn't JSON
+        // Fallback if response isn't JSON string streams
     }
     return `Server communication failed (Status: ${response.status})`;
 }

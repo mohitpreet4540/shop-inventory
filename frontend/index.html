@@ -3,147 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retail POS - Billing Counter</title>
+    <title>Apna Bazar - Shopkeeper Control Tower</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css">
 </head>
-<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+<body class="bg-gray-50 min-h-screen font-sans flex flex-col">
 
-    <nav class="bg-blue-600 text-white shadow-md px-6 py-4 flex justify-between items-center">
+    <nav class="bg-blue-900 text-white shadow-md px-6 py-4 flex justify-between items-center">
         <div class="flex items-center space-x-3">
-            <i class="fa-solid fa-shop text-2xl"></i>
-            <span class="text-xl font-bold tracking-wide">SmartPOS Billing Engine</span>
+            <i class="fa-solid fa-store text-2xl text-yellow-400"></i>
+            <span class="text-xl font-bold tracking-tight">Apna Bazar Control Center</span>
         </div>
-        <div class="flex space-x-6 font-medium">
-            <a href="index.html" class="border-b-2 border-white pb-1 text-white"><i class="fa-solid fa-calculator mr-1"></i> Billing</a>
+        <div class="flex space-x-6 font-medium text-sm">
+            <a href="index.html" class="text-yellow-400 border-b-2 border-yellow-400 pb-1"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a>
+            <a href="billing.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-calculator mr-1"></i> Billing Counter</a>
             <a href="products.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-box mr-1"></i> Inventory</a>
             <a href="categories.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-folder-tree mr-1"></i> Categories</a>
         </div>
     </nav>
 
-    <div class="flex-1 grid grid-cols-12 gap-6 p-6">
-        
-        <main class="col-span-12 lg:col-span-9 flex flex-col space-y-6">
-            
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 items-center">
-                <div class="w-full md:w-1/2 relative">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                        <i class="fa-solid fa-barcode text-lg"></i>
-                    </span>
-                    <input 
-                        type="text" 
-                        id="barcode-input" 
-                        class="w-full pl-10 pr-4 py-3 bg-blue-50 border border-blue-300 rounded-lg text-gray-800 placeholder-blue-400 font-mono text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-                        placeholder="Scan Barcode / Point Scanner Gun Here..."
-                        autofocus
-                    >
+    <main class="p-6 max-w-7xl mx-auto w-full flex-1">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div>
+                <h1 class="text-2xl font-black text-gray-900 tracking-tight">Store Performance Overview</h1>
+                <p id="current-date-display" class="text-xs font-semibold text-gray-400 mt-1"></p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <label for="dashboard-range-selector" class="text-xs font-bold text-gray-500 uppercase tracking-wider">Analysis Interval:</label>
+                <select id="dashboard-range-selector" class="bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="today">Today (Realtime Logs)</option>
+                    <option value="weekly">Weekly View (7 Days)</option>
+                    <option value="monthly">Monthly View (30 Days)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Gross Revenue</span>
+                <h2 id="sales-revenue-display" class="text-xl font-black text-gray-900 my-2 font-mono">₹0.00</h2>
+                <div class="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded self-start">Calculated Billings</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Liquid Received</span>
+                <h2 id="liquid-received-display" class="text-xl font-black text-emerald-600 my-2 font-mono">₹0.00</h2>
+                <div class="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded self-start">Cash + Online Drawer</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Market Debt (Udhaar)</span>
+                <h2 id="outstanding-udhaar-display" class="text-xl font-black text-red-600 my-2 font-mono">₹0.00</h2>
+                <div class="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded self-start">Pending Ledger Khata</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Purchase Cost Spend</span>
+                <h2 id="purchase-spend-display" class="text-xl font-black text-orange-600 my-2 font-mono">₹0.00</h2>
+                <div class="text-[10px] text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded self-start">Inventory Outflow</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Estimated Net Profit</span>
+                <h2 id="net-profit-display" class="text-xl font-black text-indigo-600 my-2 font-mono">₹0.00</h2>
+                <div class="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded self-start">Calculated Yield margin</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4 lg:col-span-1">
+                <div class="p-4 bg-yellow-50 text-yellow-600 rounded-xl">
+                    <i class="fa-solid fa-crown text-2xl"></i>
                 </div>
-                
-                <div class="w-full md:w-1/2 relative">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                    </span>
-                    <input 
-                        type="text" 
-                        id="search-input" 
-                        class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Or search manually by item name, brand..."
-                    >
-                    <div id="search-results-dropdown" class="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto hidden"></div>
+                <div>
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Top Product Vector</span>
+                    <h3 id="top-selling-product-display" class="text-md font-extrabold text-gray-800 mt-1">Gathering checkout streams...</h3>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col">
-                <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                    <h2 class="font-bold text-gray-700 text-lg flex items-center">
-                        <i class="fa-solid fa-cart-shopping text-blue-500 mr-2"></i> Current Active Cart
-                    </h2>
-                    <button id="clear-cart-btn" class="text-sm text-red-500 hover:text-red-700 font-semibold flex items-center space-x-1">
-                        <i class="fa-solid fa-trash-can"></i> <span>Clear All</span>
-                    </button>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+                <div class="flex justify-between items-center mb-4 pb-2 border-b">
+                    <h3 class="font-bold text-gray-800 text-sm flex items-center">
+                        <i class="fa-solid fa-triangle-exclamation mr-2 text-amber-500"></i> Critical Inventory Stock Deficit Alert Feed
+                    </h3>
+                    <a href="products.html" class="text-blue-600 text-xs font-bold hover:underline">Refill Stock</a>
                 </div>
-                
-                <div class="overflow-x-auto flex-1">
+                <div class="overflow-hidden rounded-lg border border-gray-200">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-gray-100 text-gray-600 text-xs uppercase font-bold border-b border-gray-200">
-                                <th class="p-4">Item Specifications</th>
-                                <th class="p-4 text-center">Unit Type</th>
-                                <th class="p-4 text-right">Price (₹)</th>
-                                <th class="p-4 text-center w-32">Quantity</th>
-                                <th class="p-4 text-right">Subtotal (₹)</th>
-                                <th class="p-4 text-center">Action</th>
+                        <thead class="bg-gray-50 text-[10px] uppercase text-gray-400 font-bold border-b">
+                            <tr>
+                                <th class="p-3">Product Description</th>
+                                <th class="p-3 text-center">Current Quantity Balance</th>
+                                <th class="p-3 text-center">Severity Flag</th>
                             </tr>
                         </thead>
-                        <tbody id="cart-table-body" class="divide-y divide-gray-200 text-gray-700 font-medium">
+                        <tbody id="low-stock-table-body" class="text-xs divide-y divide-gray-100">
                             </tbody>
                     </table>
-                    
-                    <div id="empty-cart-view" class="p-12 flex flex-col items-center justify-center text-gray-400 space-y-3">
-                        <i class="fa-solid fa-basket-shopping text-6xl text-gray-200"></i>
-                        <p class="text-lg font-medium">Cart is completely empty</p>
-                        <p class="text-xs text-gray-400">Scan a retail product or search above to load invoice entries.</p>
-                    </div>
                 </div>
             </div>
-        </main>
-
-        <aside class="col-span-12 lg:col-span-3 flex flex-col space-y-6">
-            
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between h-full">
-                <div>
-                    <h2 class="font-bold text-gray-800 text-xl border-b border-gray-100 pb-3 mb-4 flex items-center">
-                        <i class="fa-solid fa-receipt text-blue-500 mr-2"></i> Bill Summary
-                    </h2>
-                    
-                    <div class="space-y-4 font-medium text-gray-600">
-                        <div class="flex justify-between">
-                            <span>Total Items:</span>
-                            <span id="summary-total-items" class="text-gray-900 font-bold">0</span>
-                        </div>
-                        <div class="flex justify-between border-b border-gray-100 pb-4">
-                            <span>Tax Base (GST Inc.):</span>
-                            <span class="text-gray-900">₹0.00</span>
-                        </div>
-                        <div class="pt-2 flex flex-col space-y-2">
-                            <span class="text-sm font-bold text-gray-500 uppercase tracking-wider">Payment Mode</span>
-                            <div class="grid grid-cols-2 gap-3">
-                                <label class="border-2 border-blue-500 bg-blue-50 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer shadow-sm transition hover:bg-blue-100/50" id="pay-cash-label">
-                                    <input type="radio" name="payment_method" value="CASH" checked class="hidden" id="radio-cash">
-                                    <i class="fa-solid fa-money-bill-wave text-xl text-blue-600 mb-1"></i>
-                                    <span class="text-sm font-bold text-blue-700">CASH</span>
-                                </label>
-                                <label class="border border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition hover:bg-gray-50" id="pay-online-label">
-                                    <input type="radio" name="payment_method" value="ONLINE" class="hidden" id="radio-online">
-                                    <i class="fa-solid fa-qrcode text-xl text-gray-500 mb-1"></i>
-                                    <span class="text-sm font-bold text-gray-600">ONLINE</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-8 pt-4 border-t border-gray-100">
-                    <div class="bg-gray-900 text-green-400 p-4 rounded-xl text-center shadow-inner mb-4 font-mono">
-                        <div class="text-xs uppercase font-bold text-gray-400 tracking-widest mb-1">Grand Total To Pay</div>
-                        <div class="text-3xl font-black">₹<span id="summary-grand-total">0.00</span></div>
-                    </div>
-                    
-                    <button 
-                        id="checkout-btn" 
-                        class="w-full bg-green-500 hover:bg-green-600 text-white font-black py-4 rounded-xl shadow-md tracking-wide text-lg flex items-center justify-center space-x-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled
-                    >
-                        <i class="fa-solid fa-circle-check text-xl"></i>
-                        <span>COMPLETE TRANSACTION</span>
-                    </button>
-                </div>
-            </div>
-        </aside>
-    </div>
+        </div>
+    </main>
 
     <script src="js/app.js"></script>
-    <script src="js/billing.js"></script>
+    <script src="js/dashboard.js"></script>
 </body>
 </html>

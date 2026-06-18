@@ -1,111 +1,96 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import func
+from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 from app.database import get_db
-from app.models import Product, StockTransaction, Category
-from app.schemas import StockIncrementRequest, ProductResponseSchema, ProductCreateSchema
+from app.models import Order, Product, FinanceLedger, OrderItem
+from app.schemas import DashboardAnalyticsSchema, LowStockProductSchema, TopSellingProductSchema
 
-router = APIRouter(prefix="/products", tags=["Products"])
+# Clean, isolated router namespace configuration
+router = APIRouter(prefix="/dashboard", tags=["Executive Dashboard"])
 
-# 1. LIST ALL PRODUCTS
-@router.get("/", response_model=List[ProductResponseSchema])
-def get_all_products(db: Session = Depends(get_db)):
-    return db.query(Product).all()
-
-
-# 2. PRODUCT CREATION LOGIC (WITH BRAND, BARCODE, AND UNIT TYPE MAPPINGS)
-@router.post("/", response_model=ProductResponseSchema)
-def create_product(product_data: ProductCreateSchema, db: Session = Depends(get_db)):
-    # Verify category validity
-    category_exists = db.query(Category).filter(Category.id == product_data.category_id).first()
-    if not category_exists:
-        raise HTTPException(status_code=400, detail="Cannot add product. The specified category_id does not exist.")
+@router.get("/metrics", response_model=DashboardAnalyticsSchema)
+def get_dashboard_analytics(
+    range_type: str = Query("today", description="Filter time windows: 'today', 'weekly', or 'monthly'"),
+    db: Session = Depends(get_db)
+):
+    now_utc = datetime.now(timezone.utc)
     
-    # Optional Protection: Prevent creating duplicate active barcodes if scanned by mistake
-    if product_data.barcode:
-        duplicate_barcode = db.query(Product).filter(Product.barcode == product_data.barcode).first()
-        if duplicate_barcode:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Product setup failed. Barcode '{product_data.barcode}' is already assigned to '{duplicate_barcode.name}'."
-            )
-            
-    try:
-        # 🌟 Unpacking brand, barcode, and unit_type values into the DB engine
-        new_product = Product(
-            name=product_data.name, 
-            brand=product_data.brand,           
-            barcode=product_data.barcode,       
-            unit_type=product_data.unit_type,   
-            cost_price=product_data.cost_price,
-            selling_price=product_data.selling_price, 
-            current_quantity=product_data.current_quantity, 
-            category_id=product_data.category_id
-        )
-        db.add(new_product)
-        db.flush()  # Generates the product ID in memory first
-        
-        # The Audit addition: If starting stock > 0, log it in history ledger!
-        if new_product.current_quantity > 0:
-            initial_stock_log = StockTransaction(
-                product_id=new_product.id,
-                quantity_changed=new_product.current_quantity, 
-                type="INITIAL_STOCK",
-                notes="Initial inventory setup upon product creation"
-            )
-            db.add(initial_stock_log)
-        
-        db.commit()
-        db.refresh(new_product)
-        return new_product
-        
-    except Exception as e:
-        db.rollback()  # Protects your database if a transaction fails
-        raise HTTPException(status_code=500, detail=f"Product creation failed: {str(e)}")
+    # 1. Establish the target time horizon filter matching your selection criteria
+    if range_type == "weekly":
+        start_time = now_utc - timedelta(days=7)
+    elif range_type == "monthly":
+        start_time = now_utc - timedelta(days=30)
+    else:  # Default fallback path: "today"
+        start_time = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
 
-
-# 3. UPDATED STOCK REFILL LOGIC (WITH DYNAMIC PRICE MODIFICATIONS)
-@router.post("/add-stock/")
-def add_product_stock(payload: StockIncrementRequest, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == payload.product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
     try:
-        # 1. Arithmetic operations smoothly combine fixed-point quantities
-        product.current_quantity += payload.quantity
+        # 2. Extract operational records corresponding to the specific date interval boundary
+        orders = db.query(Order).filter(Order.timestamp >= start_time).all()
         
-        # 📝 TRACK BATCH NOTE OVERRIDES FOR LOGS
-        log_notes = payload.notes
+        # 3. Process the split-ledger financial cash-flow matrices
+        total_sales_revenue = Decimal("0.00")
+        total_liquid_received = Decimal("0.00")
+        total_market_debt = Decimal("0.00")
         
-        # 🌟 DYNAMIC PRICE OVERRIDES LAYER
-        # Check if new cost or retail prices were supplied in the incoming network payload packet
-        if payload.cost_price is not None:
-            old_cost = product.cost_price
-            product.cost_price = payload.cost_price
-            log_notes += f" | Cost Shifted: ₹{old_cost} -> ₹{payload.cost_price}"
-            
-        if payload.selling_price is not None:
-            old_selling = product.selling_price
-            product.selling_price = payload.selling_price
-            log_notes += f" | Retail Shifted: ₹{old_selling} -> ₹{payload.selling_price}"
+        for order in orders:
+            total_sales_revenue += order.total_amount
+            total_liquid_received += order.amount_paid
+            total_market_debt += order.amount_pending
+
+        # 4. Compute wholesale stock purchase expenditure via automation ledger logs
+        purchase_spend_query = db.query(func.sum(FinanceLedger.amount))\
+            .filter(FinanceLedger.type == "PURCHASE", FinanceLedger.timestamp >= start_time)\
+            .scalar()
+        total_purchase_spend = Decimal(str(purchase_spend_query)) if purchase_spend_query else Decimal("0.00")
+
+        # 5. Compute net operating profitability thresholds
+        overall_net_profit = total_sales_revenue - total_purchase_spend
+
+        # 6. Extract the top-moving product profile over the selected timeline
+        top_product_data = db.query(
+            OrderItem.product_id,
+            func.sum(OrderItem.quantity).label("total_sold")
+        ).join(Order).filter(Order.timestamp >= start_time)\
+         .group_by(OrderItem.product_id)\
+         .order_by(func.sum(OrderItem.quantity).desc())\
+         .first()
+
+        top_selling_product = None
+        if top_product_data:
+            prod_record = db.query(Product).filter(Product.id == top_product_data.product_id).first()
+            if prod_record:
+                top_selling_product = TopSellingProductSchema(
+                    id=prod_record.id,
+                    name=prod_record.name,
+                    total_quantity_sold=Decimal(str(top_product_data.total_sold))
+                )
+
+        # 7. Identify critical stock depletion thresholds (Low Stock Alerts)
+        LOW_STOCK_THRESHOLD = Decimal("10.00")
+        low_stock_products = db.query(Product).filter(Product.current_quantity <= LOW_STOCK_THRESHOLD).all()
         
-        # 2. Log the comprehensive transaction history record entry
-        stock_log = StockTransaction(
-            product_id=product.id,
-            quantity_changed=payload.quantity,
-            type="RESTOCK",
-            notes=log_notes  
+        low_stock_alerts = [
+            LowStockProductSchema(id=p.id, name=p.name, current_quantity=p.current_quantity)
+            for p in low_stock_products
+        ]
+        low_stock_count = len(low_stock_alerts)
+
+        # 8. Assemble structured analytical payload return structure
+        return DashboardAnalyticsSchema(
+            total_sales_revenue=total_sales_revenue,
+            total_liquid_received=total_liquid_received,
+            total_market_debt=total_market_debt,
+            total_purchase_spend=total_purchase_spend,
+            overall_net_profit=overall_net_profit,
+            top_selling_product=top_selling_product,
+            low_stock_count=low_stock_count,
+            low_stock_alerts=low_stock_alerts
         )
-        db.add(stock_log)
-        db.commit()
-        db.refresh(product)
-        
-        return {
-            "status": "success",
-            "message": f"Successfully refilled {payload.quantity} {product.unit_type} of {product.name} ({product.brand}). Base configuration price matrices updated.",
-            "updated_stock": product.current_quantity
-        }
+
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to compile dashboard metrics aggregation engine data: {str(e)}"
+        )

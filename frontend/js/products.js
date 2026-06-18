@@ -4,12 +4,26 @@
 const inventoryTableBody = document.getElementById('inventory-table-body');
 const productForm = document.getElementById('product-form');
 const inventorySearch = document.getElementById('inventory-search');
-const categoryDropdown = document.getElementById('p-category'); // Reference to category dropdown
+const categoryDropdown = document.getElementById('p-category'); 
 
-// Boot triggers: Load active inventory and category choices immediately on page launch
+// Refill Modal Interception Controls DOM
+const refillModalBackdrop = document.getElementById('refill-modal-backdrop');
+const refillTargetProductDisplay = document.getElementById('refill-target-product-display');
+const refillProductIdHolder = document.getElementById('refill-product-id-holder');
+const refillQuantityInput = document.getElementById('refill-quantity-input');
+const refillOperationForm = document.getElementById('refill-operation-form');
+
+// Internal global cache array layer for lookup processing
+let localInventoryRosterCache = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchMasterInventory();
-    fetchCategoriesForDropdown();
+    if (categoryDropdown) fetchCategoriesForDropdown();
+    if (productForm) productForm.addEventListener('submit', handleProductCreation);
+    if (refillOperationForm) refillOperationForm.addEventListener('submit', handleRefillFormSubmission);
+    
+    // Wire Up Hardware Barcode Scanner Global Keyboard Sniffer
+    initGlobalBarcodeScannerListener();
 });
 
 // ==========================================
@@ -21,9 +35,8 @@ async function fetchMasterInventory() {
         const products = await response.json();
 
         if (response.ok) {
+            localInventoryRosterCache = products; // Cache roster locally for scanner parsing
             renderInventoryTable(products);
-        } else {
-            console.error("Failed to extract master product ledger rows.");
         }
     } catch (error) {
         console.error("Inventory backend server offline error:", error);
@@ -31,70 +44,58 @@ async function fetchMasterInventory() {
 }
 
 function renderInventoryTable(products) {
+    if (!inventoryTableBody) return;
     inventoryTableBody.innerHTML = '';
 
     if (products.length === 0) {
-        inventoryTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-400 font-medium">No inventory products found in database.</td></tr>`;
+        inventoryTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-400 font-medium text-xs">No products found.</td></tr>`;
         return;
     }
 
-    products.forEach(prod => {
-        const costPrice = parseFloat(prod.cost_price).toFixed(2);
-        const sellingPrice = parseFloat(prod.selling_price).toFixed(2);
-        const currentQty = parseFloat(prod.current_quantity);
-        
-        // Low Stock Highlighter Flag Rule (alert if under 5 units remaining)
-        const isLowStock = currentQty <= 5.00;
-
-        const row = `
-            <tr class="hover:bg-gray-50 transition border-b border-gray-100">
-                <td class="p-4 text-center font-mono text-xs font-bold text-gray-400">${prod.id}</td>
-                <td class="p-4">
-                    <div class="font-bold text-gray-900">${prod.name}</div>
-                    <div class="text-xs text-gray-500">Brand: <span class="font-semibold">${prod.brand}</span></div>
-                </td>
-                <td class="p-4 text-center font-mono text-xs text-gray-600 font-bold">${prod.barcode || '<span class="text-gray-300">Loose Metrics</span>'}</td>
-                <td class="p-4 text-right">
-                    <div class="text-xs text-gray-400">Cost: ₹${costPrice}</div>
-                    <div class="font-bold text-green-600">Retail: ₹${sellingPrice}</div>
-                </td>
-                <td class="p-4 text-center">
-                    <span class="px-2.5 py-1 rounded-full text-xs font-black ${isLowStock ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
-                        ${currentQty} ${prod.unit_type}
-                    </span>
-                </td>
-                <td class="p-4 text-center">
-                    <button onclick="triggerQuickRestock(${prod.id}, '${prod.name}')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold px-2.5 py-1 text-xs rounded shadow transition cursor-pointer">
-                        <i class="fa-solid fa-boxes-stacked"></i> Restock
-                    </button>
-                </td>
-            </tr>
+    products.forEach(product => {
+        const qty = parseFloat(product.current_quantity || 0);
+        const row = document.createElement('tr');
+        row.className = "border-b text-xs hover:bg-gray-50/50 transition";
+        row.innerHTML = `
+            <td class="p-3 font-bold text-gray-500 font-mono text-center">${product.id}</td>
+            <td class="p-3">
+                <span class="font-bold text-gray-800">${product.name}</span>
+                <p class="text-[10px] text-gray-400 font-medium">${product.brand || 'Generic'}</p>
+            </td>
+            <td class="p-3 font-mono text-gray-600 bg-gray-50/50 rounded font-semibold text-center">${product.barcode || '---'}</td>
+            <td class="p-3 font-mono font-medium text-right">
+                <span class="text-gray-400 block text-[10px]">Cost: ₹${parseFloat(product.cost_price).toFixed(2)}</span>
+                <span class="text-blue-600 font-black">Sell: ₹${parseFloat(product.selling_price).toFixed(2)}</span>
+            </td>
+            <td class="p-3 font-mono font-bold text-center ${qty <= 5 ? 'text-red-600 bg-red-50 font-black' : 'text-gray-700'}">
+                ${qty.toFixed(0)} <span class="text-[10px] text-gray-400 block">${product.unit_type || 'PCS'}</span>
+            </td>
+            <td class="p-3 text-center">
+                <div class="flex gap-1 justify-center items-center">
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider shadow-sm transition" onclick="triggerQuickRestockDialog(${product.id}, '${product.name}')"><i class="fa-solid fa-plus mr-1"></i>Refill</button>
+                    <button class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider shadow-sm transition" onclick="triggerPriceUpdateDialog(${product.id}, ${product.selling_price})"><i class="fa-solid fa-tag mr-1"></i>Rate</button>
+                </div>
+            </td>
         `;
-        inventoryTableBody.insertAdjacentHTML('beforeend', row);
+        inventoryTableBody.appendChild(row);
     });
 }
 
 // ==========================================
-// 3. ONBOARD NEW PRODUCT MANAGEMENT POST
+// 3. ATOMIC PRODUCT CREATION PIPELINE
 // ==========================================
-productForm.addEventListener('submit', async (e) => {
-    e.preventDefault(); 
-
-    const categoryIdValue = categoryDropdown.value;
-    if (!categoryIdValue) {
-        alert("Please select a valid Category option from the dropdown selection list.");
-        return;
-    }
-
+async function handleProductCreation(e) {
+    e.preventDefault();
+    
     const payload = {
         name: document.getElementById('p-name').value.trim(),
-        brand: document.getElementById('p-brand').value.trim() || "Local",
+        brand: document.getElementById('p-brand').value.trim() || null,
         barcode: document.getElementById('p-barcode').value.trim() || null,
-        unit_type: document.getElementById('p-unit').value,
-        cost_price: parseFloat(document.getElementById('p-cost').value),
-        selling_price: parseFloat(document.getElementById('p-selling').value),
-        current_quantity: parseFloat(document.getElementById('p-qty').value),
-        category_id: parseInt(categoryIdValue) // Reads database integer value safely from select options
+        unit_type: document.getElementById('p-unit-type').value,
+        cost_price: parseFloat(document.getElementById('p-cost-price').value),
+        selling_price: parseFloat(document.getElementById('p-selling-price').value),
+        current_quantity: parseFloat(document.getElementById('p-initial-qty').value || 0),
+        category_id: parseInt(categoryDropdown.value)
     };
 
     try {
@@ -105,108 +106,171 @@ productForm.addEventListener('submit', async (e) => {
         });
 
         if (response.ok) {
-            alert("🎉 Product successfully onboarded and saved to inventory!");
             productForm.reset();
-            fetchMasterInventory(); // Reload live list values
+            fetchMasterInventory();
+            alert("Product successfully configured and saved!");
         } else {
-            alert("Onboarding Denied: Verify item data configurations or completely unique barcode.");
+            const err = await response.json();
+            alert("Rejection: " + (err.detail || "Verification Error"));
         }
     } catch (error) {
-        alert("Server communication failure during stock save profile execution.");
+        alert("Server transmission failed.");
     }
-});
+}
 
 // ==========================================
-// 4. FIXED: RAPID-ACTION REFILL (CONNECTED TO YOUR /add-stock/)
+// 4. PRICE & MODAL REFILL OPERATIONS ENGINE
 // ==========================================
-// ==========================================
-// 4. FIXED: PATH MATCHED TO /products/add-stock/
-// ==========================================
-window.triggerQuickRestock = async function(productId, productName) {
-    // 1. Ask for Quantity
-    const refillQty = prompt(`Enter received wholesale delivery quantity for "${productName}":`);
-    if (refillQty === null) return; 
+function triggerQuickRestockDialog(productId, productName) {
+    if (!refillModalBackdrop || !refillTargetProductDisplay || !refillProductIdHolder || !refillQuantityInput) return;
     
-    const parsedQty = parseFloat(refillQty);
-    if (isNaN(parsedQty) || parsedQty <= 0) {
-        alert("Invalid quantity!");
+    refillProductIdHolder.value = productId;
+    refillTargetProductDisplay.innerText = productName;
+    refillQuantityInput.value = '';
+    
+    refillModalBackdrop.classList.remove('hidden');
+    setTimeout(() => refillQuantityInput.focus(), 100);
+}
+
+function closeRefillModal() {
+    if (refillModalBackdrop) refillModalBackdrop.classList.add('hidden');
+}
+
+async function handleRefillFormSubmission(e) {
+    e.preventDefault();
+    
+    const productId = parseInt(refillProductIdHolder.value);
+    const qty = parseFloat(refillQuantityInput.value);
+    
+    if (isNaN(productId) || isNaN(qty) || qty <= 0) {
+        alert("Please declare a positive, realistic restock allocation threshold value.");
         return;
     }
-
-    //  Ask for Optional Price Changes
-    const newCost = prompt(`Enter NEW Cost Price (₹) if changed (otherwise leave blank):`);
-    const newSelling = prompt(`Enter NEW Selling Price (₹) if changed (otherwise leave blank):`);
-
-    const payload = {
-        product_id: productId,
-        quantity: parsedQty,
-        notes: "Restock with potential price adjustment",
-        // Only send numbers if user typed something
-        cost_price: (newCost && newCost.trim() !== "") ? parseFloat(newCost) : null,
-        selling_price: (newSelling && newSelling.trim() !== "") ? parseFloat(newSelling) : null
-    };
 
     try {
         const response = await fetch(`${API_BASE_URL}/products/add-stock/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ 
+                product_id: productId, 
+                quantity: qty, 
+                notes: "Manual replenishment entry logged via console management terminal view" 
+            })
         });
 
         if (response.ok) {
-            const data = await response.json();
-            alert(`✅ ${data.message}`);
-            fetchMasterInventory(); 
+            closeRefillModal();
+            fetchMasterInventory();
         } else {
-            alert("Update failed. Check if rates are valid numbers.");
+            const err = await response.json();
+            alert(`Refill rejected: ${err.detail || 'Malformed transaction schema payload parameter context.'}`);
         }
     } catch (error) {
-        alert("Network execution failure during restock.");
+        console.error("Transmission error encountered tracking stock adjustments:", error);
+        alert("Failed to sync inventory update log with store database server.");
     }
-};
+}
 
-// ==========================================
-// 5. INVENTORY RECORD SEARCH LOGIC FILTER
-// ==========================================
-inventorySearch.addEventListener('input', async () => {
-    const query = inventorySearch.value.trim();
-    
-    if (!query) {
-        fetchMasterInventory(); 
-        return;
-    }
+async function triggerPriceUpdateDialog(productId, currentPrice) {
+    const newPriceStr = prompt(`Adjust retail selling rate (Current: ₹${currentPrice}):`);
+    if (!newPriceStr) return;
+    const newPrice = parseFloat(newPriceStr);
+    if (isNaN(newPrice) || newPrice <= 0) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(query)}`);
-        const searchResults = await response.json();
+        const response = await fetch(`${API_BASE_URL}/products/${productId}/update-price`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selling_price: newPrice })
+        });
 
         if (response.ok) {
-            renderInventoryTable(searchResults);
+            fetchMasterInventory();
+            alert("Rate successfully logged in system audit path!");
+        } else {
+            const err = await response.json();
+            alert(`Adjustment Denied: ${err.detail}`);
         }
     } catch (error) {
-        console.error("Live inventory filtering failure:", error);
+        console.error(error);
     }
-});
+}
 
 // ==========================================
-// 6. USER-FRIENDLY CATEGORY SELECT DIALOG LOADER
+// 5. HARDWARE BARCODE INTERCEPTION SUITE
 // ==========================================
+function initGlobalBarcodeScannerListener() {
+    let barcodeBuffer = "";
+    let lastKeyTime = Date.now();
+
+    window.addEventListener("keydown", (e) => {
+        // Disregard keyboard sequences tracking within regular modal input fields
+        const targetTag = e.target.tagName.toLowerCase();
+        if (targetTag === "input" || targetTag === "select" || targetTag === "textarea") {
+            return;
+        }
+
+        const currentTime = Date.now();
+        // Hardware electronic sequence scanners output characters rapidly (<30ms gaps)
+        if (currentTime - lastKeyTime > 50) {
+            barcodeBuffer = "";
+        }
+        lastKeyTime = currentTime;
+
+        if (e.key === "Enter") {
+            if (barcodeBuffer.length >= 3) {
+                processBarcodeRefillMatch(barcodeBuffer);
+                barcodeBuffer = "";
+            }
+        } else if (e.key.length === 1) {
+            barcodeBuffer += e.key;
+        }
+    });
+}
+
+function processBarcodeRefillMatch(scannedBarcode) {
+    // Intercept data array structures matching scan key metrics
+    const matchedProduct = localInventoryRosterCache.find(p => p.barcode === scannedBarcode);
+
+    if (matchedProduct) {
+        triggerQuickRestockDialog(matchedProduct.id, matchedProduct.name);
+    } else {
+        alert(`Scanned Barcode: "${scannedBarcode}" is not cataloged inside Apna Bazar's database asset records core schema. Register it inside the profile creation wizard panel layout area.`);
+    }
+}
+
+// ==========================================
+// 6. SEARCH SYSTEM INTEGRATION WIRE
+// ==========================================
+if (inventorySearch) {
+    inventorySearch.addEventListener('input', async () => {
+        const query = inventorySearch.value.trim();
+        if (!query) {
+            fetchMasterInventory(); 
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(query)}`);
+            const searchResults = await response.json();
+            if (response.ok) renderInventoryTable(searchResults);
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
 async function fetchCategoriesForDropdown() {
-    if (!categoryDropdown) return;
-
     try {
         const response = await fetch(`${API_BASE_URL}/categories/`);
         const categories = await response.json();
-
         if (response.ok && categories.length > 0) {
-            categoryDropdown.innerHTML = '<option value="">-- Select Category --</option>';
-            
+            categoryDropdown.innerHTML = '<option value="">-- Choose Category --</option>';
             categories.forEach(cat => {
-                const option = `<option value="${cat.id}">${cat.name}</option>`;
-                categoryDropdown.insertAdjacentHTML('beforeend', option);
+                categoryDropdown.insertAdjacentHTML('beforeend', `<option value="${cat.id}">${cat.name}</option>`);
             });
         }
     } catch (error) {
-        console.error("Failed to sync category options down from database engine:", error);
+        console.error(error);
     }
 }
