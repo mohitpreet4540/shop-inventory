@@ -52,7 +52,6 @@ class Order(Base):
     payment_status = Column(String, default="PAID") # PAID, PARTIAL, UNPAID
     customer_info = Column(String, nullable=True)
     
-    # 🌟 Fixed: Using lambda with timezone.utc to avoid the AttributeError
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     items = relationship("OrderItem", back_populates="order")
@@ -85,7 +84,6 @@ class StockTransaction(Base):
     type = Column(String, nullable=False)
     quantity_changed = Column(Numeric(10, 2), nullable=False)     
     
-    # 🌟 Fixed: Standardizing timestamp logic
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     notes = Column(String, nullable=True)
 
@@ -102,6 +100,5 @@ class FinanceLedger(Base):
     category = Column(String, nullable=False)
     is_automated = Column(Boolean, default=True)
     
-    # 🌟 Fixed: Standardizing timestamp logic
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     notes = Column(String, nullable=True)

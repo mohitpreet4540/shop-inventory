@@ -11,14 +11,31 @@ const refillModalBackdrop = document.getElementById('refill-modal-backdrop');
 const refillTargetProductDisplay = document.getElementById('refill-target-product-display');
 const refillProductIdHolder = document.getElementById('refill-product-id-holder');
 const refillQuantityInput = document.getElementById('refill-quantity-input');
+const refillCostInput = document.getElementById('refill-cost-input');
+const refillSellingInput = document.getElementById('refill-selling-input');
 const refillOperationForm = document.getElementById('refill-operation-form');
 
 // Internal global cache array layer for lookup processing
 let localInventoryRosterCache = [];
 
-document.addEventListener('DOMContentLoaded', () => {
-    fetchMasterInventory();
-    if (categoryDropdown) fetchCategoriesForDropdown();
+document.addEventListener('DOMContentLoaded', async () => {
+    // 💡 Determine base API URL safely with an explicit fallback string context
+    const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+    console.log("Initializing Inventory System Connection Terminal via source path:", baseUrl);
+
+    // Load master table data stream layers up front
+    await fetchMasterInventory();
+    
+    // Wrap dropdown sync parameters in isolated protection branches
+    try {
+        if (categoryDropdown) {
+            await fetchCategoriesForDropdown();
+        }
+    } catch (catError) {
+        console.error("Category parsing safety isolation tripped:", catError);
+    }
+    
+    // Explicitly bind lifecycle events safely
     if (productForm) productForm.addEventListener('submit', handleProductCreation);
     if (refillOperationForm) refillOperationForm.addEventListener('submit', handleRefillFormSubmission);
     
@@ -31,7 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 async function fetchMasterInventory() {
     try {
-        const response = await fetch(`${API_BASE_URL}/products/`);
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/products/`);
         const products = await response.json();
 
         if (response.ok) {
@@ -40,6 +58,9 @@ async function fetchMasterInventory() {
         }
     } catch (error) {
         console.error("Inventory backend server offline error:", error);
+        if (inventoryTableBody) {
+            inventoryTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-500 font-bold text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Connection Error: System Terminal Backend Offline.</td></tr>`;
+        }
     }
 }
 
@@ -68,7 +89,7 @@ function renderInventoryTable(products) {
                 <span class="text-blue-600 font-black">Sell: ₹${parseFloat(product.selling_price).toFixed(2)}</span>
             </td>
             <td class="p-3 font-mono font-bold text-center ${qty <= 5 ? 'text-red-600 bg-red-50 font-black' : 'text-gray-700'}">
-                ${qty.toFixed(0)} <span class="text-[10px] text-gray-400 block">${product.unit_type || 'PCS'}</span>
+                ${qty.toFixed(2)} <span class="text-[10px] text-gray-400 block">${product.unit_type || 'PCS'}</span>
             </td>
             <td class="p-3 text-center">
                 <div class="flex gap-1 justify-center items-center">
@@ -89,7 +110,7 @@ async function handleProductCreation(e) {
     
     const payload = {
         name: document.getElementById('p-name').value.trim(),
-        brand: document.getElementById('p-brand').value.trim() || null,
+        brand: document.getElementById('p-brand').value.trim() || "Local",
         barcode: document.getElementById('p-barcode').value.trim() || null,
         unit_type: document.getElementById('p-unit-type').value,
         cost_price: parseFloat(document.getElementById('p-cost-price').value),
@@ -99,7 +120,8 @@ async function handleProductCreation(e) {
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/products/`, {
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/products/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -128,6 +150,13 @@ function triggerQuickRestockDialog(productId, productName) {
     refillTargetProductDisplay.innerText = productName;
     refillQuantityInput.value = '';
     
+    // Find item configuration from the roster array cache layer to populate base rates
+    const targetProduct = localInventoryRosterCache.find(p => p.id === productId);
+    if (targetProduct) {
+        if (refillCostInput) refillCostInput.value = parseFloat(targetProduct.cost_price || 0);
+        if (refillSellingInput) refillSellingInput.value = parseFloat(targetProduct.selling_price || 0);
+    }
+    
     refillModalBackdrop.classList.remove('hidden');
     setTimeout(() => refillQuantityInput.focus(), 100);
 }
@@ -141,19 +170,24 @@ async function handleRefillFormSubmission(e) {
     
     const productId = parseInt(refillProductIdHolder.value);
     const qty = parseFloat(refillQuantityInput.value);
+    const costPrice = parseFloat(refillCostInput.value);
+    const sellingPrice = parseFloat(refillSellingInput.value);
     
-    if (isNaN(productId) || isNaN(qty) || qty <= 0) {
-        alert("Please declare a positive, realistic restock allocation threshold value.");
+    if (isNaN(productId) || isNaN(qty) || qty <= 0 || isNaN(costPrice) || isNaN(sellingPrice)) {
+        alert("Please declare realistic restock quantity and pricing parameters.");
         return;
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/products/add-stock/`, {
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/products/add-stock/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 product_id: productId, 
                 quantity: qty, 
+                cost_price: costPrice,
+                selling_price: sellingPrice,
                 notes: "Manual replenishment entry logged via console management terminal view" 
             })
         });
@@ -163,10 +197,10 @@ async function handleRefillFormSubmission(e) {
             fetchMasterInventory();
         } else {
             const err = await response.json();
-            alert(`Refill rejected: ${err.detail || 'Malformed transaction schema payload parameter context.'}`);
+            alert(`Refill rejected: ${err.detail || 'Malformed transaction payload parameter context.'}`);
         }
     } catch (error) {
-        console.error("Transmission error encountered tracking stock adjustments:", error);
+        console.error("Transmission error tracking stock adjustments:", error);
         alert("Failed to sync inventory update log with store database server.");
     }
 }
@@ -178,10 +212,11 @@ async function triggerPriceUpdateDialog(productId, currentPrice) {
     if (isNaN(newPrice) || newPrice <= 0) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/products/${productId}/update-price`, {
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/products/${productId}/update-price`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ selling_price: newPrice })
+            body: JSON.stringify({ selling_price: newPrice, cost_price: null })
         });
 
         if (response.ok) {
@@ -204,14 +239,12 @@ function initGlobalBarcodeScannerListener() {
     let lastKeyTime = Date.now();
 
     window.addEventListener("keydown", (e) => {
-        // Disregard keyboard sequences tracking within regular modal input fields
         const targetTag = e.target.tagName.toLowerCase();
         if (targetTag === "input" || targetTag === "select" || targetTag === "textarea") {
             return;
         }
 
         const currentTime = Date.now();
-        // Hardware electronic sequence scanners output characters rapidly (<30ms gaps)
         if (currentTime - lastKeyTime > 50) {
             barcodeBuffer = "";
         }
@@ -229,13 +262,12 @@ function initGlobalBarcodeScannerListener() {
 }
 
 function processBarcodeRefillMatch(scannedBarcode) {
-    // Intercept data array structures matching scan key metrics
     const matchedProduct = localInventoryRosterCache.find(p => p.barcode === scannedBarcode);
 
     if (matchedProduct) {
         triggerQuickRestockDialog(matchedProduct.id, matchedProduct.name);
     } else {
-        alert(`Scanned Barcode: "${scannedBarcode}" is not cataloged inside Apna Bazar's database asset records core schema. Register it inside the profile creation wizard panel layout area.`);
+        alert(`Scanned Barcode: "${scannedBarcode}" is not cataloged inside Apna Bazar's records.`);
     }
 }
 
@@ -251,7 +283,8 @@ if (inventorySearch) {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/search/products/?query=${encodeURIComponent(query)}`);
+            const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+            const response = await fetch(`${baseUrl}/search/products/?query=${encodeURIComponent(query)}`);
             const searchResults = await response.json();
             if (response.ok) renderInventoryTable(searchResults);
         } catch (error) {
@@ -261,16 +294,13 @@ if (inventorySearch) {
 }
 
 async function fetchCategoriesForDropdown() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/categories/`);
-        const categories = await response.json();
-        if (response.ok && categories.length > 0) {
-            categoryDropdown.innerHTML = '<option value="">-- Choose Category --</option>';
-            categories.forEach(cat => {
-                categoryDropdown.insertAdjacentHTML('beforeend', `<option value="${cat.id}">${cat.name}</option>`);
-            });
-        }
-    } catch (error) {
-        console.error(error);
+    const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+    const response = await fetch(`${baseUrl}/categories/`);
+    const categories = await response.json();
+    if (response.ok && categories.length > 0) {
+        categoryDropdown.innerHTML = '<option value="">-- Choose Category --</option>';
+        categories.forEach(cat => {
+            categoryDropdown.insertAdjacentHTML('beforeend', `<option value="${cat.id}">${cat.name}</option>`);
+        });
     }
 }

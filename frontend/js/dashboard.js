@@ -1,3 +1,4 @@
+
 // ==========================================
 // CORE CENTRAL RECONCILIATION STATE ENGINE
 // ==========================================
@@ -26,8 +27,7 @@ async function fetchDashboardMetrics(rangeType = "today") {
     try {
         const response = await fetch(`${API_BASE_URL}/dashboard/metrics?range_type=${rangeType}`);
         if (!response.ok) {
-            const errMsg = await handleResponseError(response);
-            throw new Error(errMsg);
+            throw new Error(`Server returned status code: ${response.status}`);
         }
 
         const metricsData = await response.json();
@@ -35,27 +35,41 @@ async function fetchDashboardMetrics(rangeType = "today") {
         renderLowStockAlertsUI(metricsData.low_stock_alerts);
     } catch (error) {
         console.error("Dashboard engine compilation failure:", error);
-        alert(`Failed to sync metric aggregates: ${error.message}`);
     }
 }
 
 // ==========================================
 // DOM UPDATE PIPELINES
 // ==========================================
+// ==========================================
+// DOM UPDATE PIPELINES
+// ==========================================
 function renderMetricCardsUI(metrics) {
-    // 1. Map financial liquidity positions directly to corresponding card targets
-    document.getElementById('sales-revenue-display').innerText = `₹${parseFloat(metrics.total_sales_revenue).toFixed(2)}`;
-    document.getElementById('liquid-received-display').innerText = `₹${parseFloat(metrics.total_liquid_received).toFixed(2)}`;
-    document.getElementById('outstanding-udhaar-display').innerText = `₹${parseFloat(metrics.total_market_debt).toFixed(2)}`;
-    document.getElementById('purchase-spend-display').innerText = `₹${parseFloat(metrics.total_purchase_spend).toFixed(2)}`;
-    document.getElementById('net-profit-display').innerText = `₹${parseFloat(metrics.overall_net_profit).toFixed(2)}`;
+    if (!metrics) return;
 
-    // 2. Map hot velocity top moving product profiles
+    // ✅ TARGETS THE EXACT WORKING HTML IDs
+    const salesRevenueElem = document.getElementById('sales-revenue-display');
+    const liquidReceivedElem = document.getElementById('liquid-received-display');
+    const outstandingUdhaarElem = document.getElementById('outstanding-udhaar-display');
+    const purchaseSpendElem = document.getElementById('purchase-spend-display');
+    const netProfitElem = document.getElementById('net-profit-display');
+
+    // Parse values cleanly to safely handle the backend's string decimal representations
+    if (salesRevenueElem) salesRevenueElem.innerText = `₹${parseFloat(metrics.total_sales_revenue || 0).toFixed(2)}`;
+    if (liquidReceivedElem) liquidReceivedElem.innerText = `₹${parseFloat(metrics.total_liquid_received || 0).toFixed(2)}`;
+    if (outstandingUdhaarElem) outstandingUdhaarElem.innerText = `₹${parseFloat(metrics.total_market_debt || 0).toFixed(2)}`;
+    if (purchaseSpendElem) purchaseSpendElem.innerText = `₹${parseFloat(metrics.total_purchase_spend || 0).toFixed(2)}`;
+    if (netProfitElem) netProfitElem.innerText = `₹${parseFloat(metrics.overall_net_profit || 0).toFixed(2)}`;
+
+    // ✅ Renders Top Selling Product into the exact text element found in your html
     const topProductLabel = document.getElementById('top-selling-product-display');
-    if (metrics.top_selling_product) {
-        topProductLabel.innerText = `${metrics.top_selling_product.name} (${parseFloat(metrics.top_selling_product.total_quantity_sold).toFixed(0)} units)`;
-    } else {
-        topProductLabel.innerText = "No sales recorded";
+    if (topProductLabel) {
+        if (metrics.top_selling_product && metrics.top_selling_product.name) {
+            const totalUnits = parseFloat(metrics.top_selling_product.total_quantity_sold || 0).toFixed(0);
+            topProductLabel.innerText = `${metrics.top_selling_product.name} (${totalUnits} units)`;
+        } else {
+            topProductLabel.innerText = "No sales recorded";
+        }
     }
 }
 

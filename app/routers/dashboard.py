@@ -4,7 +4,8 @@ from sqlalchemy import func
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from app.database import get_db
-from app.models import Order, Product, FinanceLedger, OrderItem
+# 🌟 FIXED: Added StockTransaction to imports
+from app.models import Order, Product, FinanceLedger, OrderItem, StockTransaction
 from app.schemas import DashboardAnalyticsSchema, LowStockProductSchema, TopSellingProductSchema
 
 # Clean, isolated router namespace configuration
@@ -39,10 +40,17 @@ def get_dashboard_analytics(
             total_liquid_received += order.amount_paid
             total_market_debt += order.amount_pending
 
-        # 4. Compute wholesale stock purchase expenditure via automation ledger logs
-        purchase_spend_query = db.query(func.sum(FinanceLedger.amount))\
-            .filter(FinanceLedger.type == "PURCHASE", FinanceLedger.timestamp >= start_time)\
-            .scalar()
+        # 4. Compute wholesale stock purchase expenditure via StockTransaction logs
+        # 🌟 FIXED: Now loops through stock adjustments, captures 'RESTOCK' logs, and multiplies by wholesale cost_price
+        purchase_spend_query = db.query(
+            func.sum(StockTransaction.quantity_changed * Product.cost_price)
+        ).join(
+            Product, StockTransaction.product_id == Product.id
+        ).filter(
+            StockTransaction.type == "RESTOCK",
+            StockTransaction.timestamp >= start_time
+        ).scalar()
+        
         total_purchase_spend = Decimal(str(purchase_spend_query)) if purchase_spend_query else Decimal("0.00")
 
         # 5. Compute net operating profitability thresholds
