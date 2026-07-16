@@ -1,126 +1,117 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from decimal import Decimal  
-from datetime import datetime, timezone  # 🌟 Swapped to standard timezone structures
-from app.database import get_db
-from app.models import Product, Order, OrderItem, StockTransaction
-from app.schemas import OrderCreateSchema, OrderResponseSchema
+from decimal import Decimal
+from app.database import SessionLocal
+from app import schemas, models
 
-router = APIRouter(prefix="/orders", tags=["Orders"])
+router = APIRouter(prefix="/api/orders", tags=["Orders & Billing"])
 
-@router.post("/", response_model=OrderResponseSchema)
-def checkout_cart(payload: OrderCreateSchema, db: Session = Depends(get_db)):
-    running_total = Decimal("0.00") 
-    
-    order_items_to_create = []
-    products_to_update = []
-    stock_logs_to_create = []
-    
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
     try:
-        for item in payload.items:
-            product = None
-            
-            if item.barcode:
-                product = db.query(Product).filter(Product.barcode == item.barcode).first()
-                if not product:
-                    raise HTTPException(status_code=404, detail=f"Scanned barcode '{item.barcode}' not found in inventory!")
-            elif item.product_id:
-                product = db.query(Product).filter(Product.id == item.product_id).first()
-                if not product:
-                    raise HTTPException(status_code=404, detail=f"Product with ID {item.product_id} not found!")
-            else:
-                raise HTTPException(status_code=400, detail="Each cart item must contain either a product_id or a barcode.")
-            
-            if product.current_quantity < item.quantity:
+        yield db
+    finally:
+        db.close()
+
+# =================================================================
+# THE TRANSACTIONAL CHECKOUT ENGINE
+# =================================================================
+@router.post("/", status_code=status.HTTP_201_CREATED)
+def create_order(order_data: schemas.OrderCreate, db: Session = Depends(get_db)):
+    try:
+        # 🌟 FIX 1: Consolidate cart quantities by product_id to prevent validation bypass
+        consolidated_quantities = {}
+        for item in order_data.items:
+            consolidated_quantities[item.product_id] = consolidated_quantities.get(item.product_id, Decimal("0.00")) + item.quantity
+
+        # 🌟 FIX 2: Lock rows using with_for_update() to prevent concurrent checkout race conditions
+        for product_id, total_qty in consolidated_quantities.items():
+            product = db.query(models.Product).filter(models.Product.id == product_id).with_for_update().first()
+            if not product:
+                raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
+            if product.current_quantity < total_qty:
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Inadequate inventory for '{product.name}' ({product.brand}). Requested: {item.quantity} {product.unit_type}, Available: {product.current_quantity}"
+                    detail=f"Insufficient stock for {product.name}. Requested total: {total_qty}, Available: {product.current_quantity}"
                 )
-            
-            item_total = product.selling_price * item.quantity
-            running_total += item_total  
-            
-            product.current_quantity -= item.quantity
-            products_to_update.append(product)
-            
-            order_items_to_create.append({
-                "product": product,
-                "quantity": item.quantity,
-                "unit_price": product.selling_price
-            })
-            stock_logs_to_create.append((product.id, item.quantity))
 
-        if abs(running_total - payload.total_amount) > Decimal("0.01"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Financial Integrity Breach: Calculated total (₹{running_total}) does not match payload total (₹{payload.total_amount})."
-            )
-
-        if payload.amount_pending > 0:
-            calculated_status = "PARTIAL" if payload.amount_paid > 0 else "UNPAID"
-        else:
-            calculated_status = "PAID"
-
-        # 🌟 FIXED: Created standard timezone-aware UTC timestamp entry
-        new_order = Order(
-            total_amount=payload.total_amount,
-            amount_paid=payload.amount_paid,
-            amount_pending=payload.amount_pending,
-            payment_method=payload.payment_method.upper(),
-            payment_status=calculated_status,
-            customer_info=payload.customer_info,
-            timestamp=datetime.now(timezone.utc)
+        # Initialize base order row configuration
+        new_order = models.Order(
+            total_amount=Decimal("0.00"),  # Calculated dynamically below
+            amount_paid=order_data.amount_paid,
+            amount_pending=Decimal("0.00"),
+            payment_method=order_data.payment_method,
+            payment_status=order_data.payment_status,
+            customer_id=order_data.customer_id,
+            customer_info=order_data.customer_info
         )
         db.add(new_order)
-        db.flush() 
+        db.flush()  # Populates new_order.id ahead of execution updates
 
-        receipt_items_breakdown = []
-        for line in order_items_to_create:
-            prod = line["product"]
+        total_amount = Decimal("0.00")
+        for item in order_data.items:
+            product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+            sell_price = product.selling_price
+            cost_price = product.cost_price
+            quantity = item.quantity
             
-            oi = OrderItem(
-                order_id=new_order.id, 
-                product_id=prod.id, 
-                quantity=line["quantity"], 
-                unit_price=line["unit_price"]
-            )
-            db.add(oi)
+            item_total = sell_price * quantity
+            total_amount += item_total
             
-            receipt_items_breakdown.append({
-                "product_id": prod.id,
-                "product_name": prod.name,
-                "brand": prod.brand,
-                "unit_type": prod.unit_type,
-                "quantity": line["quantity"],
-                "unit_price": line["unit_price"]
-            })
-
-        for prod_id, qty in stock_logs_to_create:
-            log = StockTransaction(
-                product_id=prod_id,
-                quantity_changed=-qty, 
+            # Save invoice line item detail
+            db.add(models.OrderItem(
+                order_id=new_order.id,
+                product_id=product.id,
+                quantity=quantity,
+                unit_price=sell_price
+            ))
+            
+            # Deduct physical inventory holdings safely
+            product.current_quantity -= quantity
+            
+            # Record structural transaction history trail
+            db.add(models.StockTransaction(
+                product_id=product.id,
                 type="SALE",
-                notes=f"Automated deduction from Order #{new_order.id}. Customer Account: {payload.customer_info}"
-            )
-            db.add(log)
+                quantity_changed=-quantity,
+                unit_cost=cost_price,
+                total_cost=quantity * cost_price,
+                notes=f"Automated POS Checkout deduction. Order Ref #{new_order.id}"
+            ))
 
-        db.commit() 
-        
-        return {
-            "id": new_order.id,
-            "total_amount": new_order.total_amount,
-            "amount_paid": new_order.amount_paid,
-            "amount_pending": new_order.amount_pending,
-            "payment_method": new_order.payment_method,
-            "payment_status": new_order.payment_status,
-            "customer_info": new_order.customer_info,
-            "timestamp": new_order.timestamp,
-            "items": receipt_items_breakdown 
-        }
+        # Complete final bill accounting balances
+        new_order.total_amount = total_amount
+        pending_debt = total_amount - order_data.amount_paid
+        new_order.amount_pending = max(Decimal("0.00"), pending_debt)
 
-    except HTTPException as http_ex:
+        # 🌟 FIX 3: Accrue unpaid balances directly to the Customer's Khata Profile
+        if pending_debt > 0:
+            if not order_data.customer_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="A valid customer profile registration ID is mandatory for Credit/Partial transactions."
+                )
+            customer = db.query(models.Customer).filter(models.Customer.id == order_data.customer_id).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Selected Customer account profile not found.")
+            customer.total_credit_due += pending_debt
+
+        # Document physical cash drawer receipts into Finance Ledger
+        if order_data.amount_paid > 0:
+            db.add(models.FinanceLedger(
+                type="INCOME",
+                amount=order_data.amount_paid,
+                category="SALES",
+                notes=f"Cash/Digital payment generated from Order Reference #{new_order.id}"
+            ))
+
+        db.commit()
+        return {"message": "Order processed successfully", "order_id": new_order.id, "total_bill": total_amount}
+
+    except HTTPException as he:
         db.rollback()
-        raise http_ex
+        raise he
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Checkout execution failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Database Transaction Crash: {str(e)}")

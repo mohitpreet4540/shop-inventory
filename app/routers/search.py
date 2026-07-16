@@ -1,34 +1,40 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
-from typing import List
-from app.database import get_db
-from app.models import Product
-from app.schemas import ProductSearchResponseSchema
+from typing import List, Optional
+from app.database import SessionLocal
+from app import schemas, models
 
-router = APIRouter(prefix="/search", tags=["Smart Search System"])
+router = APIRouter(prefix="/api/search", tags=["Global Search Engine"])
 
-@router.get("/products/", response_model=List[ProductSearchResponseSchema])
-def search_inventory(
-    query: str = Query(..., description="Search by product name, brand, or barcode string"),
-    db: Session = Depends(get_db)
-):
-   
-    clean_query = query.strip()
-    
-    if not clean_query:
-        raise HTTPException(status_code=400, detail="Search query cannot be empty.")
-    
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
     try:
-      
-        search_results = db.query(Product).filter(
-            or_(
-                Product.name.ilike(f"%{clean_query}%"),
-                Product.brand.ilike(f"%{clean_query}%"),
-                Product.barcode == clean_query  # Exact match for barcode scans
-            )
-        ).limit(20).all() 
-        return search_results
+        yield db
+    finally:
+        db.close()
 
+# =================================================================
+# GLOBAL INVENTORY PREVIEW SEARCH ENGINE
+# =================================================================
+@router.get("/products", response_model=List[schemas.ProductSearchResponse])
+def search_products(q: Optional[str] = None, db: Session = Depends(get_db)):
+    try:
+        # Return an empty list immediately if no search text is passed
+        if not q:
+            return []
+            
+        # Execute flexible lookup matching text against names, brands, or absolute barcodes
+        results = db.query(models.Product).filter(
+            (models.Product.name.ilike(f"%{q}%")) |
+            (models.Product.brand.ilike(f"%{q}%")) |
+            (models.Product.barcode == q)
+        ).limit(20).all()  # Constrain limits so the dashboard UI drops down instantly
+        
+        return results
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search engine execution failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Search Query Execution Failure: {str(e)}"
+        )

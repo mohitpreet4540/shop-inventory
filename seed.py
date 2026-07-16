@@ -2,15 +2,16 @@ import sys
 from decimal import Decimal
 import datetime
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, engine
+from app.database import SessionLocal
 from app import models
 
 def seed_database():
-    print("Starting automated database seeding with Split-Ledger Financial parameters...")
+    print("🚀 Starting Production-Grade Store Database Seeding...")
     db: Session = SessionLocal()
     
     try:
-        print("🧹 Cleaning up old database records...")
+        print("🧹 Flushing old database records to reset integrity chains...")
+        db.query(models.FinanceLedger).delete()
         db.query(models.StockTransaction).delete()
         db.query(models.OrderItem).delete()
         db.query(models.Order).delete()
@@ -18,154 +19,188 @@ def seed_database():
         db.query(models.Category).delete()
         db.commit()
 
-        print("📁 Injecting base categories...")
-        electronics = models.Category(name="Electronics")
-        groceries = models.Category(name="Groceries")
-        cosmetics = models.Category(name="Cosmetics")
+        print("📁 Injecting Department Categories...")
+        groceries = models.Category(name="Groceries & Staples")
+        electronics = models.Category(name="Electronics & Electricals")
+        cosmetics = models.Category(name="Cosmetics & Personal Care")
+        beverages = models.Category(name="Beverages & Snacks")
         
-        db.add_all([electronics, groceries, cosmetics])
+        db.add_all([groceries, electronics, cosmetics, beverages])
         db.flush() 
 
-        print("📦 Injecting sample inventory products with Brands and custom Unit Types...")
+        print("📦 Injecting 15 Genuine Product SKU Records (Many-to-Many Mapped)...")
+        
+        # --- GROCERIES & STAPLES ---
         p1 = models.Product(
-            name="Wireless Mouse", brand="Logitech", barcode="8901058860710",
-            cost_price=Decimal("800.00"), selling_price=Decimal("1200.00"), 
-            current_quantity=Decimal("50.00"), unit_type="PIECE", category_id=electronics.id
+            name="Maggi 2-Minute Instant Noodles", brand="Nestlé Maggi", barcode="8901058002479",
+            cost_price=Decimal("11.50"), selling_price=Decimal("14.00"), 
+            current_quantity=Decimal("350.00"), unit_type="PIECE", categories=[groceries],
+            image_url="/static/uploads/8901058002479.jpg"
         )
         p2 = models.Product(
-            name="Mechanical Keyboard", brand="Cosmic Byte", barcode="8901725111222",
-            cost_price=Decimal("2500.00"), selling_price=Decimal("3500.00"), 
-            current_quantity=Decimal("12.00"), unit_type="PIECE", category_id=electronics.id
+            name="Tata Salt Iodized", brand="Tata", barcode="8901058860123",
+            cost_price=Decimal("22.00"), selling_price=Decimal("28.00"), 
+            current_quantity=Decimal("120.00"), unit_type="PIECE", categories=[groceries],
+            image_url="/static/uploads/8901058860123.jpg"
         )
         p3 = models.Product(
-            name="Maggi Noodles Packet", brand="Nestle Maggi", barcode="8901058860123",
-            cost_price=Decimal("10.00"), selling_price=Decimal("14.00"), 
-            current_quantity=Decimal("200.00"), unit_type="PIECE", category_id=groceries.id
+            name="Fortune Premium Kachi Ghani Mustard Oil", brand="Fortune", barcode="8906007282361",
+            cost_price=Decimal("145.00"), selling_price=Decimal("175.00"), 
+            current_quantity=Decimal("60.00"), unit_type="PIECE", categories=[groceries],
+            image_url="/static/uploads/8906007282361.jpg"
         )
         p4 = models.Product(
-            name="Loose White Sugar", brand="Local", barcode="LOCAL_SUGAR_03",
-            cost_price=Decimal("36.00"), selling_price=Decimal("44.00"), 
-            current_quantity=Decimal("150.50"), unit_type="KG", category_id=groceries.id
+            name="Loose Pure White Sugar", brand="Local Wholesale", barcode="LOCAL_SUGAR_KG_01",
+            cost_price=Decimal("37.00"), selling_price=Decimal("45.00"), 
+            current_quantity=Decimal("240.50"), unit_type="KG", categories=[groceries],
+            image_url=None
         )
+
+        # --- ELECTRONICS & ELECTRICALS ---
         p5 = models.Product(
-            name="Electrical Wire Black", brand="Havells", barcode="LOCAL_WIRE_04",
-            cost_price=Decimal("15.00"), selling_price=Decimal("25.00"), 
-            current_quantity=Decimal("2.50"), unit_type="METER", category_id=electronics.id
+            name="Logitech B100 Optical USB Mouse", brand="Logitech", barcode="8901058860710",
+            cost_price=Decimal("290.00"), selling_price=Decimal("399.00"), 
+            current_quantity=Decimal("45.00"), unit_type="PIECE", categories=[electronics],
+            image_url="/static/uploads/8901058860710.jpg"
         )
         p6 = models.Product(
-            name="Aloe Vera Face Wash", brand="Patanjali", barcode="8904109450321",
-            cost_price=Decimal("120.00"), selling_price=Decimal("180.00"), 
-            current_quantity=Decimal("25.00"), unit_type="PIECE", category_id=cosmetics.id
+            name="Cosmic Byte CB-GK-16 Mechanical Keyboard", brand="Cosmic Byte", barcode="8901725111222",
+            cost_price=Decimal("1950.00"), selling_price=Decimal("2499.00"), 
+            current_quantity=Decimal("15.00"), unit_type="PIECE", categories=[electronics],
+            image_url="/static/uploads/8901725111222.jpg"
+        )
+        p7 = models.Product(
+            name="Havells 3-Core Heavy Duty Electrical Wire", brand="Havells", barcode="LOCAL_WIRE_MTR_02",
+            cost_price=Decimal("18.00"), selling_price=Decimal("30.00"), 
+            current_quantity=Decimal("180.00"), unit_type="METER", categories=[electronics],
+            image_url=None
         )
 
-        db.add_all([p1, p2, p3, p4, p5, p6])
+        # --- COSMETICS & PERSONAL CARE ---
+        p8 = models.Product(
+            name="Patanjali Aloe Vera Face Wash", brand="Patanjali", barcode="8904109450321",
+            cost_price=Decimal("75.00"), selling_price=Decimal("95.00"), 
+            current_quantity=Decimal("80.00"), unit_type="PIECE", categories=[cosmetics],
+            image_url="/static/uploads/8904109450321.jpg"
+        )
+        p9 = models.Product(
+            name="Dettol Liquid Antiseptic", brand="Dettol", barcode="8901396326121",
+            cost_price=Decimal("270.00"), selling_price=Decimal("331.00"), 
+            current_quantity=Decimal("35.00"), unit_type="PIECE", categories=[cosmetics],
+            image_url="/static/uploads/8901396326121.jpg"
+        )
+        p10 = models.Product(
+            name="Colgate MaxFresh Spicy Fresh Gel", brand="Colgate", barcode="8901138836017",
+            cost_price=Decimal("82.00"), selling_price=Decimal("110.00"), 
+            current_quantity=Decimal("90.00"), unit_type="PIECE", categories=[cosmetics],
+            image_url="/static/uploads/8901138836017.jpg"
+        )
+
+        # --- BEVERAGES & SNACKS ---
+        p11 = models.Product(
+            name="Maggi Arôme Liquid Seasoning 250g", brand="Nestlé", barcode="3033710084913",
+            cost_price=Decimal("180.00"), selling_price=Decimal("240.00"), 
+            current_quantity=Decimal("28.00"), unit_type="PIECE", categories=[beverages],
+            image_url="/static/uploads/3033710084913.jpg"
+        )
+        p12 = models.Product(
+            name="Coca-Cola Original Taste 500ml", brand="Coca-Cola", barcode="5449000000996",
+            cost_price=Decimal("32.00"), selling_price=Decimal("40.00"), 
+            current_quantity=Decimal("200.00"), unit_type="PIECE", categories=[beverages],
+            image_url="/static/uploads/5449000000996.jpg"
+        )
+        p13 = models.Product(
+            name="Cadbury Dairy Milk Silk Chocolate", brand="Cadbury", barcode="7622210811241",
+            cost_price=Decimal("68.00"), selling_price=Decimal("80.00"), 
+            current_quantity=Decimal("110.00"), unit_type="PIECE", categories=[beverages],
+            image_url="/static/uploads/7622210811241.jpg"
+        )
+        p14 = models.Product(
+            name="Lays Potato Chips India's Magic Masala", brand="Lays", barcode="8901491101838",
+            cost_price=Decimal("16.00"), selling_price=Decimal("20.00"), 
+            current_quantity=Decimal("150.00"), unit_type="PIECE", categories=[beverages],
+            image_url="/static/uploads/8901491101838.jpg"
+        )
+        p15 = models.Product(
+            name="Amul Butter 100g", brand="Amul", barcode="8901262010048",
+            cost_price=Decimal("46.00"), selling_price=Decimal("56.00"), 
+            current_quantity=Decimal("75.00"), unit_type="PIECE", categories=[groceries],
+            image_url="/static/uploads/8901262010048.jpg"
+        )
+
+        all_products = [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15]
+        db.add_all(all_products)
         db.flush()
 
-        print("📜 Generating initial stock transaction history audit logs...")
-        for prod in [p1, p2, p3, p4, p5, p6]:
-            log = models.StockTransaction(
-                product_id=prod.id, quantity_changed=prod.current_quantity,
-                type="INITIAL_STOCK", notes="Automated system setup seeding"
-            )
-            db.add(log)
+        # --- AUDIT TRAIL LOGGING ---
+        print("📜 Constructing Historical Stock Audits matching financial models...")
+        now = datetime.datetime.now(datetime.timezone.utc)
+        six_months_ago = now - datetime.timedelta(days=180)
+        one_month_ago = now - datetime.timedelta(days=30)
 
-        print("🛒 Simulating split financial invoice order logs...")
+        for prod in all_products:
+            initial_qty = prod.current_quantity + Decimal("20.00")
+            db.add(models.StockTransaction(
+                product_id=prod.id, 
+                quantity_changed=initial_qty, 
+                type="INITIAL_STOCK", 
+                unit_cost=prod.cost_price,
+                total_cost=initial_qty * prod.cost_price,
+                notes="Opening balance allocation", 
+                timestamp=six_months_ago
+            ))
+
+        # --- FINANCIAL INVOICES & ORDERS SIMULATION ---
+        print("🛒 Generating Distributed Revenue Metrics...")
         
-        # 🌟 ORDER 1: Fully Paid UPI Transaction (Fast Track Route)
-        # 2 Mice (2 * 1200 = 2400) + 1.5 meters of Havells Wire (1.5 * 25 = 37.50) = 2437.50 total
+        # ORDER 1: Cash Sale
         order1 = models.Order(
-            total_amount=Decimal("2437.50"),
-            amount_paid=Decimal("2437.50"),
-            amount_pending=Decimal("0.00"),
-            payment_method="ONLINE",
-            payment_status="PAID",
-            customer_info="Walk-in Customer",
-            timestamp=datetime.datetime.now(datetime.timezone.utc)
+            total_amount=Decimal("416.00"), amount_paid=Decimal("416.00"), amount_pending=Decimal("0.00"),
+            payment_method="CASH", payment_status="PAID", customer_info="Walk-in Customer", timestamp=one_month_ago
         )
         db.add(order1)
         db.flush()
-        
-        oi1 = models.OrderItem(order_id=order1.id, product_id=p1.id, quantity=Decimal("2.00"), unit_price=Decimal("1200.00"))
-        oi2 = models.OrderItem(order_id=order1.id, product_id=p5.id, quantity=Decimal("1.50"), unit_price=Decimal("25.00"))
-        db.add_all([oi1, oi2])
-        
-        p1.current_quantity -= Decimal("2.00")
-        p5.current_quantity -= Decimal("1.50")
-        db.add(models.StockTransaction(product_id=p1.id, quantity_changed=Decimal("-2.00"), type="SALE", notes=f"Order #{order1.id}"))
-        db.add(models.StockTransaction(product_id=p5.id, quantity_changed=Decimal("-1.50"), type="SALE", notes=f"Order #{order1.id}"))
+        db.add(models.OrderItem(order_id=order1.id, product_id=p1.id, quantity=Decimal("10.00"), unit_price=Decimal("14.00")))
+        db.add(models.OrderItem(order_id=order1.id, product_id=p11.id, quantity=Decimal("1.00"), unit_price=Decimal("240.00")))
+        db.add(models.OrderItem(order_id=order1.id, product_id=p14.id, quantity=Decimal("2.00"), unit_price=Decimal("20.00")))
+        p1.current_quantity -= Decimal("10.00")
+        p11.current_quantity -= Decimal("1.00")
+        p14.current_quantity -= Decimal("2.00")
 
-
-        # 🌟 ORDER 2: Fully Paid Cash Transaction (Fast Track Route)
-        # 50 Packets of Maggi * 14 = 700.00 total
+        # ORDER 2: UPI Sale
         order2 = models.Order(
-            total_amount=Decimal("700.00"),
-            amount_paid=Decimal("700.00"),
-            amount_pending=Decimal("0.00"),
-            payment_method="CASH",
-            payment_status="PAID",
-            customer_info="Walk-in Customer",
-            timestamp=datetime.datetime.utcnow()
+            total_amount=Decimal("1235.00"), amount_paid=Decimal("1235.00"), amount_pending=Decimal("0.00"),
+            payment_method="ONLINE", payment_status="PAID", customer_info="Walk-in Customer", timestamp=now - datetime.timedelta(days=5)
         )
         db.add(order2)
         db.flush()
-        
-        oi3 = models.OrderItem(order_id=order2.id, product_id=p3.id, quantity=Decimal("50.00"), unit_price=Decimal("14.00"))
-        db.add(oi3)
-        p3.current_quantity -= Decimal("50.00")
-        db.add(models.StockTransaction(product_id=p3.id, quantity_changed=Decimal("-50.00"), type="SALE", notes=f"Order #{order2.id}"))
+        db.add(models.OrderItem(order_id=order2.id, product_id=p3.id, quantity=Decimal("2.00"), unit_price=Decimal("175.00")))
+        db.add(models.OrderItem(order_id=order2.id, product_id=p4.id, quantity=Decimal("10.00"), unit_price=Decimal("45.00")))
+        db.add(models.OrderItem(order_id=order2.id, product_id=p9.id, quantity=Decimal("1.00"), unit_price=Decimal("331.00")))
+        db.add(models.OrderItem(order_id=order2.id, product_id=p15.id, quantity=Decimal("2.00"), unit_price=Decimal("56.00")))
+        p3.current_quantity -= Decimal("2.00")
+        p4.current_quantity -= Decimal("10.00")
+        p9.current_quantity -= Decimal("1.00")
+        p15.current_quantity -= Decimal("2.00")
 
-
-        # 🌟 ORDER 3: REAL-WORLD PARTIAL UDHAAR DEAL (Khata Track Route)
-        # 1 Keyboard (3500.00) + 5 KG Sugar (5 * 44 = 220.00) = 3720.00 total
-        # Customer pays ₹1500 upfront down payment, balances ₹2220 to Khata Ledger
+        # ORDER 3: Udhaar Deal (Partial Payment)
         order3 = models.Order(
-            total_amount=Decimal("3720.00"),
-            amount_paid=Decimal("1500.00"),
-            amount_pending=Decimal("2220.00"),
-            payment_method="PARTIAL",
-            payment_status="PARTIAL",
-            customer_info="Gurpreet Singh (9812345678)",
-            timestamp=datetime.datetime.utcnow()
+            total_amount=Decimal("3298.00"), amount_paid=Decimal("1000.00"), amount_pending=Decimal("2298.00"),
+            payment_method="PARTIAL", payment_status="PARTIAL", customer_info="Gurpreet Singh (9812345678)", timestamp=now - datetime.timedelta(days=12)
         )
         db.add(order3)
         db.flush()
-        
-        oi4 = models.OrderItem(order_id=order3.id, product_id=p2.id, quantity=Decimal("1.00"), unit_price=Decimal("3500.00"))
-        oi5 = models.OrderItem(order_id=order3.id, product_id=p4.id, quantity=Decimal("5.00"), unit_price=Decimal("44.00"))
-        db.add_all([oi4, oi5])
-        
-        p2.current_quantity -= Decimal("1.00")
-        p4.current_quantity -= Decimal("5.00")
-        db.add(models.StockTransaction(product_id=p2.id, quantity_changed=Decimal("-1.00"), type="SALE", notes=f"Order #{order3.id} | Credit Account: Gurpreet Singh"))
-        db.add(models.StockTransaction(product_id=p4.id, quantity_changed=Decimal("-5.00"), type="SALE", notes=f"Order #{order3.id} | Credit Account: Gurpreet Singh"))
-
-
-        # 🌟 ORDER 4: 100% UNPAID FULL CREDIT TRANSACTION (Pure Udhaar Line)
-        # 2 Aloe Vera Face Wash * 180 = 360.00 total. Pays 0 upfront.
-        order4 = models.Order(
-            total_amount=Decimal("360.00"),
-            amount_paid=Decimal("0.00"),
-            amount_pending=Decimal("360.00"),
-            payment_method="CREDIT",
-            payment_status="UNPAID",
-            customer_info="Aman Saini (9464512345)",
-            timestamp=datetime.datetime.utcnow()
-        )
-        db.add(order4)
-        db.flush()
-        
-        oi6 = models.OrderItem(order_id=order4.id, product_id=p6.id, quantity=Decimal("2.00"), unit_price=Decimal("180.00"))
-        db.add(oi6)
-        
-        p6.current_quantity -= Decimal("2.00")
-        db.add(models.StockTransaction(product_id=p6.id, quantity_changed=Decimal("-2.00"), type="SALE", notes=f"Order #{order4.id} | Full Credit Line: Aman Saini"))
+        db.add(models.OrderItem(order_id=order3.id, product_id=p6.id, quantity=Decimal("1.00"), unit_price=Decimal("2499.00")))
+        db.add(models.OrderItem(order_id=order3.id, product_id=p5.id, quantity=Decimal("2.00"), unit_price=Decimal("399.00")))
+        p6.current_quantity -= Decimal("1.00")
+        p5.current_quantity -= Decimal("2.00")
 
         db.commit()
-        print("🎉 Database successfully seeded with rich, split-ledger, and unit-aware mock retail logs!")
+        print("🎉 Seeding Execution Finished! 15 products fully linked across your custom tables.")
         
     except Exception as e:
         db.rollback()
-        print(f"❌ Error during seeding lifecycle: {str(e)}")
+        print(f"❌ Transaction Lifecycle Crash during execution: {str(e)}")
     finally:
         db.close()
 

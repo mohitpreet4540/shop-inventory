@@ -1,162 +1,218 @@
-let globalCategoriesList = [];
-
-const categoryForm = document.getElementById('category-form');
-const categoryNameInput = document.getElementById('category-name');
-const parentCategorySelect = document.getElementById('parent-category-select');
-const tableBody = document.getElementById('categories-table-body');
-const submitBtn = document.getElementById('submit-btn');
-
-// Preview Nodes DOM Element Connections
-const productPreviewBox = document.getElementById('product-preview-box');
-const selectedCategoryTitle = document.getElementById('selected-category-title');
-const productCountBadge = document.getElementById('product-count-badge');
-const subcategoriesContainer = document.getElementById('subcategories-container');
-const productsPreviewTableBody = document.getElementById('products-preview-table-body');
-
+// ==========================================
+// INITIALIZATION & STATE MANAGEMENT
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    fetchCategories();
-    if (categoryForm) categoryForm.addEventListener('submit', handleCategorySubmission);
+    // Run core execution layout routines on startup
+    syncCategoryRegistryLayers();
+
+    // Attach listener to manual refresh sync trigger button
+    const refreshTrigger = document.getElementById('refresh-tree-trigger');
+    if (refreshTrigger) {
+        refreshTrigger.addEventListener('click', syncCategoryRegistryLayers);
+    }
+
+    // Intercept and process creation forms
+    const creationForm = document.getElementById('category-creation-form');
+    if (creationForm) {
+        creationForm.addEventListener('submit', commitCategoryFormSubmission);
+    }
 });
 
-async function fetchCategories() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/categories/`);
-        if (response.ok) {
-            globalCategoriesList = await response.json();
-            populateParentDropdown(globalCategoriesList);
-            renderCategoriesTable(globalCategoriesList);
-        }
-    } catch (error) {
-        console.error("Failed to fetch system categories payload:", error);
-    }
-}
+// ==========================================
+// DYNAMIC HIERARCHY MATRIX SYNC ENGINE
+// ==========================================
+async function syncCategoryRegistryLayers() {
+    const treeRoot = document.getElementById('category-hierarchy-tree-root');
+    const loaderSpinner = document.getElementById('tree-loader-spinner');
+    const emptyNotice = document.getElementById('tree-empty-notice');
+    const totalCounter = document.getElementById('total-category-counter');
 
-function renderCategoriesTable(categories) {
-    if (!tableBody) return;
-    tableBody.innerHTML = '';
+    if (!treeRoot) return;
 
-    if (categories.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan=\"3\" class=\"p-4 text-center text-gray-400 text-xs\">No configuration classes recorded.</td></tr>`;
-        return;
-    }
-
-    categories.forEach(cat => {
-        // Find human readable parent node name if it links backwards
-        const parentNode = categories.find(c => c.id === cat.parent_id);
-        const parentName = parentNode ? parentNode.name : '<span class="text-gray-300 font-normal">Root Layer</span>';
-
-        const row = document.createElement('tr');
-        row.className = "border-b text-xs hover:bg-blue-50/50 cursor-pointer transition duration-150";
-        row.innerHTML = `
-            <td class="p-3 font-bold text-gray-500 font-mono text-center">${cat.id}</td>
-            <td class="p-3 font-black text-gray-800">${cat.name}</td>
-            <td class="p-3 font-semibold text-gray-600">${parentName}</td>
-        `;
-        
-        // Add click integration callback
-        row.addEventListener('click', () => handleCategoryDrilldownClick(cat.id, cat.name));
-        tableBody.appendChild(row);
-    });
-}
-
-// Interactive Drill-down Logic Processing Pipeline Engine
-async function handleCategoryDrilldownClick(categoryId, categoryName) {
-    if (!productPreviewBox || !selectedCategoryTitle || !subcategoriesContainer || !productsPreviewTableBody) return;
-
-    // Unhide layout view system
-    selectedCategoryTitle.innerText = categoryName;
-    productPreviewBox.classList.remove('hidden');
-
-    // 1. Process and populate subcategories tracking loops
-    subcategoriesContainer.innerHTML = '';
-    const childNodes = globalCategoriesList.filter(c => c.parent_id === categoryId);
+    loaderSpinner.classList.remove('hidden');
+    treeRoot.innerHTML = '';
+    emptyNotice.classList.add('hidden');
     
-    if (childNodes.length === 0) {
-        subcategoriesContainer.innerHTML = `<span class="text-gray-400 italic font-medium text-[11px]">No child subcategories nested under this group.</span>`;
-    } else {
-        childNodes.forEach(child => {
-            const spanTag = `<span class="px-2.5 py-1 bg-white border border-gray-200 rounded-md shadow-sm font-bold text-gray-700"><i class="fa-solid fa-folder text-yellow-500 mr-1"></i>${child.name}</span>`;
-            subcategoriesContainer.insertAdjacentHTML('beforeend', spanTag);
-        });
-    }
-
-    // 2. Fetch inventory records to filter bound catalog list data
     try {
-        productsPreviewTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-2 text-blue-500"></i>Synchronizing items stream...</td></tr>`;
+        // Absolute fallback URL matching dashboard configuration
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/categories`);
         
-        const response = await fetch(`${API_BASE_URL}/products/`);
-        if (response.ok) {
-            const allProducts = await response.json();
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Data synchronization failure down network pipeline');
+        }
+        
+        const rootCategories = await response.json();
+        
+        if (totalCounter) {
+            let totalCount = rootCategories.length;
+            rootCategories.forEach(cat => {
+                if (cat.subcategories) totalCount += cat.subcategories.length;
+            });
+            totalCounter.innerText = totalCount;
+        }
+
+        if (rootCategories.length === 0) {
+            loaderSpinner.classList.add('hidden');
+            emptyNotice.classList.remove('hidden');
+            populateParentSelectionDropdown([]);
+            return;
+        }
+
+        populateParentSelectionDropdown(rootCategories);
+        loaderSpinner.classList.add('hidden');
+        
+        rootCategories.forEach(rootCategory => {
+            const rootCard = document.createElement('div');
+            rootCard.className = "bg-gray-50 border border-gray-200 rounded-xl overflow-hidden shadow-sm mb-3";
             
-            // Collect target array boundaries: include parent and child subcategory items
-            const structuralIdsTarget = [categoryId, ...childNodes.map(c => c.id)];
-            const matchSetProducts = allProducts.filter(p => structuralIdsTarget.includes(p.category_id));
+            let subcategoryRowsHTML = '';
+            const validSubcategories = rootCategory.subcategories || [];
 
-            productCountBadge.innerText = `${matchSetProducts.length} Items Found`;
-            productsPreviewTableBody.innerHTML = '';
-
-            if (matchSetProducts.length === 0) {
-                productsPreviewTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 font-medium">No active products added to this category mapping group yet.</td></tr>`;
-                return;
+            if (validSubcategories.length > 0) {
+                validSubcategories.forEach(sub => {
+                    subcategoryRowsHTML += `
+                        <div class="flex items-center justify-between py-2.5 px-4 bg-white border-t border-gray-100 text-sm pl-8">
+                            <div class="flex items-center space-x-2 text-gray-700">
+                                <i class="fa-solid fa-turn-up rotate-90 text-gray-300 text-xs mb-1"></i>
+                                <span class="font-medium">${sub.name}</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs bg-indigo-50 text-indigo-600 font-semibold px-2 py-0.5 rounded-full border border-indigo-100">Subgroup</span>
+                                <button class="text-xs text-emerald-500 p-1 transition" onclick="triggerInactivationAlert('${sub.name}')" title="Active">
+                                    <i class="fa-solid fa-toggle-on text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                subcategoryRowsHTML = `
+                    <div class="py-3 px-4 bg-white border-t border-gray-100 text-xs text-gray-400 italic pl-8">
+                        No secondary sub-group classifications assigned under this department root.
+                    </div>
+                `;
             }
 
-            matchSetProducts.forEach(prod => {
-                const tr = `
-                    <tr class="hover:bg-gray-50/50 transition">
-                        <td class="p-3 font-bold text-gray-800">${prod.name}</td>
-                        <td class="p-3 text-gray-500">${prod.brand || 'Generic'}</td>
-                        <td class="p-3 text-right font-mono font-bold text-blue-600">₹${parseFloat(prod.selling_price).toFixed(2)}</td>
-                        <td class="p-3 text-center font-mono font-bold ${prod.current_quantity <= 10 ? 'text-red-600 bg-red-50' : 'text-gray-700'}">${prod.current_quantity} ${prod.unit_type || 'PCS'}</td>
-                    </tr>
-                `;
-                productsPreviewTableBody.insertAdjacentHTML('beforeend', tr);
-            });
-        } else {
-            productsPreviewTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-red-500">Could not unpack storage schema stream.</td></tr>`;
-        }
+            rootCard.innerHTML = `
+                <div class="flex items-center justify-between py-3.5 px-4 bg-gray-100 text-sm font-bold text-gray-800">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-folder text-amber-500"></i>
+                        <span>${rootCategory.name}</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-semibold">Primary Root</span>
+                        <button class="text-xs text-emerald-500 p-1 transition" onclick="triggerInactivationAlert('${rootCategory.name}')" title="Active">
+                            <i class="fa-solid fa-toggle-on text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-white">
+                    ${subcategoryRowsHTML}
+                </div>
+            `;
+            
+            treeRoot.appendChild(rootCard);
+        });
+
     } catch (err) {
-        productsPreviewTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-red-500">Data pipeline dropped unexpectedly.</td></tr>`;
+        loaderSpinner.classList.add('hidden');
+        console.error("Categories engine pipeline crash:", err);
+        triggerSystemToast(err.message, 'error');
     }
 }
 
-async function handleCategorySubmission(e) {
+// ==========================================
+// INPUT ENTRY COMMIT OPERATION ROUTINES
+// ==========================================
+async function commitCategoryFormSubmission(e) {
     e.preventDefault();
-    const nameVal = categoryNameInput.value.trim();
-    if (!nameVal) return;
+    
+    const nameInput = document.getElementById('category-name-input');
+    const parentSelect = document.getElementById('parent-category-select');
+    
+    if (!nameInput) return;
+    
+    const rawName = nameInput.value.trim();
+    const chosenParent = parentSelect ? parentSelect.value : "";
+
+    if (!rawName) return;
 
     const payload = {
-        name: nameVal,
-        parent_id: parentCategorySelect.value ? parseInt(parentCategorySelect.value) : null
+        name: rawName,
+        parent_id: chosenParent ? parseInt(chosenParent, 10) : null
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/categories/`, {
+        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
+        const response = await fetch(`${baseUrl}/categories/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
-        if (response.ok) {
-            categoryNameInput.value = '';
-            parentCategorySelect.value = '';
-            if (productPreviewBox) productPreviewBox.classList.add('hidden'); // Reset active drill-down view
-            await fetchCategories();
-        } else {
-            const err = await response.json();
-            alert(`Rejected: ${err.detail}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to create new category record entry');
         }
+
+        triggerSystemToast(`Category entry successfully committed and registered!`);
+        nameInput.value = '';
+        if (parentSelect) parentSelect.value = '';
+        
+        await syncCategoryRegistryLayers();
+
     } catch (error) {
-        alert("Transmission dropped.");
+        console.error("Category configuration storage fault:", error);
+        triggerSystemToast(error.message, 'error');
     }
 }
 
-function populateParentDropdown(categories) {
-    if (!parentCategorySelect) return;
-    parentCategorySelect.innerHTML = '<option value=\"\">-- No Parent (Root Category) --</option>';
-    categories.forEach(category => {
+// ==========================================
+// HELPER UI COMPONENT UTILITIES
+// ==========================================
+function populateParentSelectionDropdown(rootNodes) {
+    const parentSelect = document.getElementById('parent-category-select');
+    if (!parentSelect) return;
+
+    parentSelect.innerHTML = '<option value="">None — Treat as Primary Department Root</option>';
+    
+    rootNodes.forEach(node => {
         const option = document.createElement('option');
-        option.value = category.id;
-        option.textContent = category.name;
-        parentCategorySelect.appendChild(option);
+        option.value = node.id;
+        option.innerText = node.name;
+        parentSelect.appendChild(option);
     });
+}
+
+function triggerSystemToast(message, type = 'success') {
+    const toast = document.getElementById('toast-notification');
+    const iconBox = document.getElementById('toast-icon-box');
+    const icon = document.getElementById('toast-icon');
+    const msgBox = document.getElementById('toast-message');
+
+    if (!toast || !msgBox) return;
+
+    msgBox.innerText = message;
+    
+    if (type === 'error') {
+        if (iconBox) iconBox.className = "inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-red-500 bg-red-100 rounded-lg";
+        if (icon) icon.className = "fa-solid fa-triangle-exclamation";
+    } else {
+        if (iconBox) iconBox.className = "inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-emerald-500 bg-emerald-100 rounded-lg";
+        if (icon) icon.className = "fa-solid fa-circle-check";
+    }
+
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 4000);
+}
+
+function triggerInactivationAlert(categoryName) {
+    alert(
+        `🛡️ ERP Safety Notice:\n\n` +
+        `The classification entry "${categoryName}" cannot be hard-deleted because historical sales transactions, ` +
+        `invoice ledger line records, or active stock items rely on its relational mapping references.\n\n` +
+        `To alter this configuration, please use the Bulk Move panel on the Inventory screen to reassign any linked products first.`
+    );
 }

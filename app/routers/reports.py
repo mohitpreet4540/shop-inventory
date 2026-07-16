@@ -1,40 +1,66 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import List, Optional
-from app.database import get_db
-from app.models import StockTransaction, Product
-from app.schemas import StockTransactionResponseSchema
+from app.database import SessionLocal
+from app import schemas, models
 
-router = APIRouter(prefix="/reports", tags=["Reports & Audit Ledgers"])
+router = APIRouter(prefix="/api/reports", tags=["Audit Reports & Ledgers"])
 
-@router.get("/stock-ledger/", response_model=List[StockTransactionResponseSchema])
-def get_stock_ledger(
-    transaction_type: Optional[str] = Query(None, description="Filter by transaction type: INITIAL_STOCK, RESTOCK, SALE"),
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# =================================================================
+# FETCH STOCK TRANSACTION AUDIT TRAILS
+# =================================================================
+@router.get("/stock-ledger", response_model=List[schemas.StockTransactionResponse])
+def get_stock_ledger_report(
+    product_id: Optional[int] = None,
+    transaction_type: Optional[str] = None,  # SALE, INITIAL_STOCK, PRICE_UPDATE, RESTOCK
     db: Session = Depends(get_db)
 ):
     try:
-        # 🌟 Step 1: Core query joining StockTransaction with Product to pull names, brands, and units!
-        query = db.query(
-            StockTransaction.id,
-            StockTransaction.product_id,
-            Product.name.label("product_name"),
-            # Note: The schema maps these cleanly if we ever choose to display them on the ledger front,
-            # but for now we pull the core transaction requirements flawlessly.
-            StockTransaction.quantity_changed,  # 🌟 Automatically reads as a clean Decimal now!
-            StockTransaction.type,
-            StockTransaction.notes,
-            StockTransaction.timestamp
-        ).join(Product, StockTransaction.product_id == Product.id)
+        # Base query joining the stock ledger with the product master table
+        query = db.query(models.StockTransaction)
         
-        # Step 2: Apply dynamic filter if the shopkeeper selects a specific type
-        if transaction_type:
-            query = query.filter(func.upper(StockTransaction.type) == transaction_type.upper())
+        # Filter by specific product if selected
+        if product_id:
+            query = query.filter(models.StockTransaction.product_id == product_id)
             
-        # Step 3: Sort chronologically so the newest transaction is at the very top
-        ledger_entries = query.order_by(StockTransaction.timestamp.desc()).all()
+        # Filter by action type configuration parameters
+        if transaction_type:
+            query = query.filter(models.StockTransaction.type == transaction_type)
+            
+        # Sort history sequentially so newest updates appear at the top
+        transactions = query.order_by(models.StockTransaction.timestamp.desc()).all()
         
-        return ledger_entries
-
+        report_data = []
+        for tx in transactions:
+            # Safe fallback if relationship lookup isn't fully cached
+            product_name = tx.product.name if getattr(tx, "product", None) else "Archived Product"
+            
+            report_data.append(
+                schemas.StockTransactionResponse(
+                    id=tx.id,
+                    product_id=tx.product_id,
+                    product_name=product_name,
+                    quantity_changed=tx.quantity_changed,
+                    type=tx.type,
+                    unit_cost=tx.unit_cost,
+                    total_cost=tx.total_cost,
+                    notes=tx.notes,
+                    timestamp=tx.timestamp
+                )
+            )
+            
+        return report_data
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load ledger history: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate stock auditing trail records: {str(e)}"
+        )

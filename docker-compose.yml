@@ -7,8 +7,14 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/code/app
+      # Syncs the static files out of the container so they automatically appear on your machine
+      - ./static:/code/static
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      # Optimization: Prevents Python from writing slow .pyc files to disk inside the container
+      - PYTHONDONTWRITEBYTECODE=1
+      # Optimization: Forces Python logs to flush instantly to terminal so your docker logs aren't delayed
+      - PYTHONUNBUFFERED=1
     depends_on:
       db:
         condition: service_healthy  # Wait until the Postgres health check passes!
@@ -26,7 +32,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 3s
       timeout: 3s
       retries: 5
