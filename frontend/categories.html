@@ -1,139 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Category Matrix Setup - Universal ERP</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Categories — Apna Bazar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
 </head>
-<body class="bg-gray-50 font-sans antialiased text-gray-800">
+<body>
+<div class="app-shell" id="ab-app"></div>
 
-    <!-- Primary Application Header Bar -->
-    <header class="bg-indigo-900 text-white shadow-md px-6 py-4 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-            <i class="fa-solid fa-folder-tree text-2xl text-indigo-300"></i>
-            <h1 class="text-xl font-bold tracking-wide">Universal ERP: Category Console</h1>
-        </div>
-        <nav class="flex space-x-4">
-            <a href="dashboard.html" class="px-3 py-2 rounded bg-indigo-800 hover:bg-indigo-700 transition text-sm font-medium"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a>
-            <a href="products.html" class="px-3 py-2 rounded bg-indigo-800 hover:bg-indigo-700 transition text-sm font-medium"><i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory</a>
-            <a href="billing.html" class="px-3 py-2 rounded bg-indigo-800 hover:bg-indigo-700 transition text-sm font-medium"><i class="fa-solid fa-file-invoice-dollar mr-1"></i> Billing Counter</a>
-        </nav>
-    </header>
-
-    <!-- Operational Main Layout Area -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- Status Notification Banner Alerts -->
-        <div id="toast-notification" class="hidden fixed top-5 right-5 z-50 flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow-xl border border-gray-100" role="alert">
-            <div id="toast-icon-box" class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-blue-500 bg-blue-100 rounded-lg">
-                <i id="toast-icon" class="fa-solid fa-info"></i>
-            </div>
-            <div id="toast-message" class="ml-3 text-sm font-normal">System notification message.</div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            <!-- LEFT PANEL: Structural Management & Category Configuration Entry -->
-            <div class="lg:col-span-1 space-y-6">
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="flex items-center space-x-2 border-b border-gray-100 pb-3 mb-4">
-                        <i class="fa-solid fa-square-plus text-lg text-indigo-600"></i>
-                        <h2 class="text-lg font-bold text-gray-900">Configure Category</h2>
-                    </div>
-
-                    <form id="category-creation-form" class="space-y-4">
-                        <!-- Name Field -->
-                        <div>
-                            <label for="category-name-input" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Category Classification Name</label>
-                            <div class="relative">
-                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                                    <i class="fa-solid fa-tag text-sm"></i>
-                                </span>
-                                <input type="text" id="category-name-input" required placeholder="e.g., Soft Drinks, Spices" 
-                                    class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-sm">
-                            </div>
-                            <p class="mt-1 text-xs text-gray-400">Input values auto-format to Title Case casing rules.</p>
-                        </div>
-
-                        <!-- Parent Selector Dropdown -->
-                        <div>
-                            <label for="parent-category-select" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Structural Level Assignment (Optional)</label>
-                            <div class="relative">
-                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                                    <i class="fa-solid fa-sitemap text-sm"></i>
-                                </span>
-                                <select id="parent-category-select" 
-                                    class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-sm appearance-none">
-                                    <option value="">None — Treat as Primary Department Root</option>
-                                    <!-- Options injected dynamically by JS -->
-                                </select>
-                                <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                                    <i class="fa-solid fa-chevron-down text-xs"></i>
-                                </span>
-                            </div>
-                            <p class="mt-1 text-xs text-gray-400">Select an existing department to construct a shallow 2-Tier framework.</p>
-                        </div>
-
-                        <!-- Submission Action Controls -->
-                        <button type="submit" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg shadow transition flex items-center justify-center space-x-2">
-                            <i class="fa-solid fa-floppy-disk"></i>
-                            <span>Commit Classification Entry</span>
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Live Structural Summary Metadata Widget -->
-                <div class="bg-indigo-50 p-6 rounded-xl border border-indigo-100 flex justify-between items-center">
-                    <div>
-                        <h3 class="text-sm font-bold text-indigo-900">Hierarchical Index Status</h3>
-                        <p class="text-xs text-indigo-700 mt-0.5">Total distinct categories running inside your ERP network configuration ledger.</p>
-                    </div>
-                    <div class="bg-indigo-600 text-white text-2xl font-extrabold px-4 py-2 rounded-xl shadow-sm">
-                        <span id="total-category-counter">0</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- RIGHT PANEL: Interactive Hierarchy Visual Matrix Tree Display -->
-            <div class="lg:col-span-2">
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 min-h-[450px]">
-                    <div class="flex justify-between items-center border-b border-gray-100 pb-3 mb-6">
-                        <div class="flex items-center space-x-2">
-                            <i class="fa-solid fa-network-wired text-lg text-indigo-600"></i>
-                            <h2 class="text-lg font-bold text-gray-900">Current Classification Index Tree</h2>
-                        </div>
-                        <button id="refresh-tree-trigger" class="text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition py-1.5 px-3 rounded-md flex items-center space-x-1">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                            <span>Sync System Registry</span>
-                        </button>
-                    </div>
-
-                    <!-- Loader State Animation Container -->
-                    <div id="tree-loader-spinner" class="hidden flex flex-col items-center justify-center py-20 space-y-3">
-                        <div class="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                        <span class="text-xs text-gray-400 font-medium tracking-wide">Querying live schema registry matrix...</span>
-                    </div>
-
-                    <!-- Empty State View Container -->
-                    <div id="tree-empty-notice" class="hidden text-center py-20 space-y-3 border-2 border-dashed border-gray-200 rounded-xl">
-                        <i class="fa-solid fa-folder-open text-4xl text-gray-300"></i>
-                        <p class="text-sm font-medium text-gray-500">No active category entries found inside database layers.</p>
-                        <p class="text-xs text-gray-400 max-w-xs mx-auto">Use the left input form schema constructor to register store departments or functional groups.</p>
-                    </div>
-
-                    <!-- Live Parsed Tree Node Injector Targets -->
-                    <div id="category-hierarchy-tree-root" class="space-y-3">
-                        <!-- Structural Tree Items Injected Here Visually by JS Engine -->
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </main>
-
-    <script src="js/app.js"></script>
-    <script src="js/categories.js"></script>
+<script src="js/core.js"></script>
+<script src="js/categories.js"></script>
 </body>
 </html>

@@ -1,306 +1,451 @@
-// ==========================================
-// 1. INITIALIZATION & DOM REFERENCES
-// ==========================================
-const inventoryTableBody = document.getElementById('inventory-table-body');
-const productForm = document.getElementById('product-form');
-const inventorySearch = document.getElementById('inventory-search');
-const categoryDropdown = document.getElementById('p-category'); 
+requireAuth(["OWNER", "ADMIN", "CASHIER"]);
+renderShell("products.html", "Inventory");
 
-// Refill Modal Interception Controls DOM
-const refillModalBackdrop = document.getElementById('refill-modal-backdrop');
-const refillTargetProductDisplay = document.getElementById('refill-target-product-display');
-const refillProductIdHolder = document.getElementById('refill-product-id-holder');
-const refillQuantityInput = document.getElementById('refill-quantity-input');
-const refillCostInput = document.getElementById('refill-cost-input');
-const refillSellingInput = document.getElementById('refill-selling-input');
-const refillOperationForm = document.getElementById('refill-operation-form');
+const canManage = Session.hasRole("OWNER", "ADMIN");
+const content = document.getElementById("ab-page-content");
 
-// Internal global cache array layer for lookup processing
-let localInventoryRosterCache = [];
+content.innerHTML = `
+  <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:16px;">
+    <div style="flex:1; min-width:220px;">
+      <label class="field-label">Search</label>
+      <input class="input" id="filter-search" placeholder="Name or barcode…">
+    </div>
+    <div style="min-width:160px;">
+      <label class="field-label">Brand</label>
+      <input class="input" id="filter-brand" placeholder="Any brand">
+    </div>
+    <div style="min-width:180px;">
+      <label class="field-label">Category</label>
+      <select class="input" id="filter-category"><option value="">All categories</option></select>
+    </div>
+    <button class="btn btn-outline" onclick="applyFilters()"><i class="fa-solid fa-filter"></i> Filter</button>
+    ${canManage ? `
+      <button class="btn btn-outline" onclick="openImportModal()"><i class="fa-solid fa-file-csv"></i> Bulk import</button>
+      <button class="btn btn-primary" onclick="openProductModal()"><i class="fa-solid fa-plus"></i> Add product</button>
+    ` : ""}
+  </div>
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 💡 Determine base API URL safely with an explicit fallback string context
-    const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-    console.log("Initializing Inventory System Connection Terminal via source path:", baseUrl);
+  <div class="card" style="overflow-x:auto;">
+    <table class="ledger-table" id="products-table">
+      <thead><tr>
+        <th>Product</th><th>Brand</th><th>Barcode</th>
+        <th style="text-align:right;">Cost</th><th style="text-align:right;">Sell</th>
+        <th style="text-align:right;">Stock</th><th>Categories</th><th>Expiry</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="products-tbody"></tbody>
+    </table>
+  </div>
 
-    // Load master table data stream layers up front
-    await fetchMasterInventory();
-    
-    // Wrap dropdown sync parameters in isolated protection branches
-    try {
-        if (categoryDropdown) {
-            await fetchCategoriesForDropdown();
-        }
-    } catch (catError) {
-        console.error("Category parsing safety isolation tripped:", catError);
+  <!-- Product create / edit modal -->
+  <div id="product-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel">
+      <div style="padding:22px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:14px;" id="product-modal-title">Add product</h3>
+        <form id="product-form" style="display:flex; flex-direction:column; gap:12px;">
+          <input type="hidden" id="pf-id">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div><label class="field-label">Name</label><input class="input" id="pf-name" required></div>
+            <div><label class="field-label">Brand</label><input class="input" id="pf-brand" value="Local"></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div><label class="field-label">Barcode (optional)</label><input class="input" id="pf-barcode"></div>
+            <div><label class="field-label">Unit type</label>
+              <select class="input" id="pf-unit">
+                <option>PIECE</option><option>KG</option><option>GRAM</option><option>LITRE</option><option>ML</option><option>PACK</option><option>DOZEN</option><option>BOX</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="field-label">Cost price</label><input class="input" type="number" min="0.01" step="0.01" id="pf-cost" required></div>
+            <div><label class="field-label">Selling price</label><input class="input" type="number" min="0.01" step="0.01" id="pf-sell" required></div>
+          </div>
+          <div id="pf-initial-stock-wrap">
+            <label class="field-label">Initial stock</label>
+            <input class="input" type="number" min="0" step="0.01" id="pf-initial-stock" value="0">
+          </div>
+          <div>
+            <label class="field-label">Categories (at least one)</label>
+            <div id="pf-categories" style="max-height:150px; overflow-y:auto; border:1px solid #D9D3C2; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:4px; font-size:0.85rem;"></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div><label class="field-label">Image URL (optional)</label><input class="input" id="pf-image"></div>
+            <div><label class="field-label">Expiry date (optional)</label><input class="input" type="date" id="pf-expiry"></div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="closeModal('product-modal')">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center;">Save product</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Price update modal -->
+  <div id="price-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:380px;">
+      <div style="padding:20px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:12px;">Update pricing</h3>
+        <form id="price-form" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="hidden" id="price-product-id">
+          <div><label class="field-label">Cost price</label><input class="input" type="number" min="0.01" step="0.01" id="price-cost"></div>
+          <div><label class="field-label">Selling price</label><input class="input" type="number" min="0.01" step="0.01" id="price-sell" required></div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="closeModal('price-modal')">Cancel</button>
+            <button type="submit" class="btn btn-gold" style="flex:1; justify-content:center;">Update</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restock modal -->
+  <div id="restock-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:380px;">
+      <div style="padding:20px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:12px;">Restock</h3>
+        <form id="restock-form" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="hidden" id="restock-product-id">
+          <div><label class="field-label">Incoming quantity</label><input class="input" type="number" min="0.01" step="0.01" id="restock-qty" required></div>
+          <div><label class="field-label">Supplier unit cost</label><input class="input" type="number" min="0" step="0.01" id="restock-cost" required></div>
+          <div><label class="field-label">Batch expiry date (optional — leave blank if it doesn't expire)</label><input class="input" type="date" id="restock-expiry"></div>
+          <div><label class="field-label">Notes (optional)</label><input class="input" id="restock-notes" placeholder="Invoice number, delivery note…"></div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="closeModal('restock-modal')">Cancel</button>
+            <button type="submit" class="btn btn-gold" style="flex:1; justify-content:center;">Log restock</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stock batches modal (FEFO breakdown) -->
+  <div id="batches-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:520px;">
+      <div style="padding:20px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:2px;" id="batches-modal-title">Stock batches</h3>
+        <p style="font-size:0.78rem; color:var(--muted); margin-bottom:12px;">
+          Oldest-expiring batches are sold first (FEFO). Non-expiring batches are drawn from last.
+        </p>
+        <div id="batches-list"></div>
+        <button type="button" class="btn btn-outline" style="width:100%; justify-content:center; margin-top:14px;" onclick="closeModal('batches-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk import modal -->
+  <div id="import-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:460px;">
+      <div style="padding:20px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:8px;">Bulk import via CSV</h3>
+        <p style="font-size:0.78rem; color:var(--muted); margin-bottom:12px;">
+          Required columns: <code class="font-mono">name, cost_price, selling_price</code>.
+          Optional: <code class="font-mono">brand, barcode, unit_type, initial_stock, category_names</code> (semicolon-separated, auto-created if missing), <code class="font-mono">image_url</code>.
+        </p>
+        <input type="file" id="import-file" accept=".csv" class="input" style="padding:8px;">
+        <div id="import-result" style="margin-top:12px; font-size:0.82rem;"></div>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="closeModal('import-modal')">Close</button>
+          <button type="button" class="btn btn-gold" style="flex:1; justify-content:center;" onclick="submitImport()">Upload &amp; import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+let allCategories = []; // flattened { id, name, depth }
+let currentProducts = [];
+
+function closeModal(id) { document.getElementById(id).style.display = "none"; }
+
+loadCategoriesForFilters();
+loadProducts();
+
+async function loadCategoriesForFilters() {
+  try {
+    const tree = await api("/api/categories/tree");
+    allCategories = [];
+    flatten(tree, 0);
+    function flatten(nodes, depth) {
+      nodes.forEach(n => {
+        allCategories.push({ id: n.id, name: n.name, depth, is_active: n.is_active });
+        if (n.subcategories && n.subcategories.length) flatten(n.subcategories, depth + 1);
+      });
     }
-    
-    // Explicitly bind lifecycle events safely
-    if (productForm) productForm.addEventListener('submit', handleProductCreation);
-    if (refillOperationForm) refillOperationForm.addEventListener('submit', handleRefillFormSubmission);
-    
-    // Wire Up Hardware Barcode Scanner Global Keyboard Sniffer
-    initGlobalBarcodeScannerListener();
+    const filterSel = document.getElementById("filter-category");
+    filterSel.innerHTML = `<option value="">All categories</option>` + allCategories.map(c =>
+      `<option value="${c.id}">${"— ".repeat(c.depth)}${escapeHtml(c.name)}</option>`
+    ).join("");
+
+    const pfCategories = document.getElementById("pf-categories");
+    pfCategories.innerHTML = allCategories.map(c => `
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" value="${c.id}" class="pf-cat-cb">
+        <span>${"— ".repeat(c.depth)}${escapeHtml(c.name)}${c.is_active ? "" : " (inactive)"}</span>
+      </label>
+    `).join("") || `<span style="color:var(--muted);">No categories yet — create one first on the Categories page.</span>`;
+  } catch (err) {
+    toastError(err);
+  }
+}
+
+async function loadProducts() {
+  const tbody = document.getElementById("products-tbody");
+  tbody.innerHTML = `<tr><td colspan="9"><div class="skeleton" style="height:16px; margin:8px 0;"></div></td></tr>`.repeat(4);
+
+  const params = new URLSearchParams();
+  const search = document.getElementById("filter-search").value.trim();
+  const brand = document.getElementById("filter-brand").value.trim();
+  const categoryId = document.getElementById("filter-category").value;
+  if (search) params.set("search", search);
+  if (brand) params.set("brand", brand);
+  if (categoryId) params.set("category_id", categoryId);
+
+  try {
+    const products = await api(`/api/products/?${params.toString()}`);
+    currentProducts = products;
+    renderProducts(products);
+  } catch (err) {
+    toastError(err);
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">Could not load products.</td></tr>`;
+  }
+}
+
+function applyFilters() { loadProducts(); }
+
+function renderProducts(products) {
+  const tbody = document.getElementById("products-tbody");
+  if (products.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:24px;">No products match these filters.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = products.map(p => {
+    const low = Number(p.current_quantity) <= 5;
+    return `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(p.name)}</td>
+        <td>${escapeHtml(p.brand)}</td>
+        <td class="font-mono" style="font-size:0.78rem;">${escapeHtml(p.barcode || "—")}</td>
+        <td style="text-align:right;" class="font-mono">${formatMoney(p.cost_price)}</td>
+        <td style="text-align:right;" class="font-mono">${formatMoney(p.selling_price)}</td>
+        <td style="text-align:right;"><span class="badge ${low ? "badge-red" : "badge-green"}">${formatQty(p.current_quantity)} ${escapeHtml(p.unit_type)}</span></td>
+        <td>${p.categories.map(c => `<span class="badge badge-navy" style="margin:1px;">${escapeHtml(c.name)}</span>`).join(" ") || "—"}</td>
+        <td style="font-size:0.78rem;">${p.expiry_date ? formatDate(p.expiry_date) : "—"}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline btn-sm" onclick="openBatchesModal(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}')" title="View batches"><i class="fa-solid fa-layer-group"></i></button>
+          ${canManage ? `
+          <button class="btn btn-outline btn-sm" onclick="openProductModal(${p.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="openPriceModal(${p.id})" title="Price"><i class="fa-solid fa-tag"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="openRestockModal(${p.id})" title="Restock"><i class="fa-solid fa-truck-ramp-box"></i></button>
+          ` : ""}
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// ---------- Create / edit product ----------
+function openProductModal(productId) {
+  const form = document.getElementById("product-form");
+  form.reset();
+  document.querySelectorAll(".pf-cat-cb").forEach(cb => cb.checked = false);
+  document.getElementById("pf-id").value = "";
+  document.getElementById("pf-initial-stock-wrap").style.display = "block";
+
+  if (productId) {
+    const p = currentProducts.find(x => x.id === productId);
+    document.getElementById("product-modal-title").textContent = "Edit product";
+    document.getElementById("pf-id").value = p.id;
+    document.getElementById("pf-name").value = p.name;
+    document.getElementById("pf-brand").value = p.brand;
+    document.getElementById("pf-barcode").value = p.barcode || "";
+    document.getElementById("pf-unit").value = p.unit_type;
+    document.getElementById("pf-cost").value = p.cost_price;
+    document.getElementById("pf-sell").value = p.selling_price;
+    document.getElementById("pf-image").value = p.image_url || "";
+    document.getElementById("pf-expiry").value = p.expiry_date || "";
+    document.getElementById("pf-initial-stock-wrap").style.display = "none";
+    const catIds = new Set(p.categories.map(c => c.id));
+    document.querySelectorAll(".pf-cat-cb").forEach(cb => cb.checked = catIds.has(Number(cb.value)));
+  } else {
+    document.getElementById("product-modal-title").textContent = "Add product";
+  }
+  document.getElementById("product-modal").style.display = "flex";
+}
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "product-form") return;
+  e.preventDefault();
+
+  const id = document.getElementById("pf-id").value;
+  const categoryIds = Array.from(document.querySelectorAll(".pf-cat-cb:checked")).map(cb => Number(cb.value));
+  if (categoryIds.length === 0) { toast("Select at least one category.", "error"); return; }
+
+  const base = {
+    name: document.getElementById("pf-name").value.trim(),
+    brand: document.getElementById("pf-brand").value.trim() || "Local",
+    barcode: document.getElementById("pf-barcode").value.trim() || null,
+    unit_type: document.getElementById("pf-unit").value,
+    cost_price: Number(document.getElementById("pf-cost").value),
+    selling_price: Number(document.getElementById("pf-sell").value),
+    image_url: document.getElementById("pf-image").value.trim() || null,
+    expiry_date: document.getElementById("pf-expiry").value || null,
+    category_ids: categoryIds,
+  };
+
+  try {
+    if (id) {
+      await api(`/api/products/${id}`, { method: "PATCH", body: base });
+      toast("Product updated.", "success");
+    } else {
+      base.initial_stock = Number(document.getElementById("pf-initial-stock").value || 0);
+      await api("/api/products/", { method: "POST", body: base });
+      toast("Product added.", "success");
+    }
+    closeModal("product-modal");
+    loadProducts();
+  } catch (err) {
+    toastError(err);
+  }
 });
 
-// ==========================================
-// 2. FETCH & DISPLAY ALL INVENTORY ITEMS
-// ==========================================
-async function fetchMasterInventory() {
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/products/`);
-        const products = await response.json();
-
-        if (response.ok) {
-            localInventoryRosterCache = products; // Cache roster locally for scanner parsing
-            renderInventoryTable(products);
-        }
-    } catch (error) {
-        console.error("Inventory backend server offline error:", error);
-        if (inventoryTableBody) {
-            inventoryTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-500 font-bold text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Connection Error: System Terminal Backend Offline.</td></tr>`;
-        }
-    }
+// ---------- Price update ----------
+function openPriceModal(productId) {
+  const p = currentProducts.find(x => x.id === productId);
+  document.getElementById("price-product-id").value = p.id;
+  document.getElementById("price-cost").value = p.cost_price;
+  document.getElementById("price-sell").value = p.selling_price;
+  document.getElementById("price-modal").style.display = "flex";
 }
 
-function renderInventoryTable(products) {
-    if (!inventoryTableBody) return;
-    inventoryTableBody.innerHTML = '';
-
-    if (products.length === 0) {
-        inventoryTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-400 font-medium text-xs">No products found.</td></tr>`;
-        return;
-    }
-
-    products.forEach(product => {
-        const qty = parseFloat(product.current_quantity || 0);
-        const row = document.createElement('tr');
-        row.className = "border-b text-xs hover:bg-gray-50/50 transition";
-        row.innerHTML = `
-            <td class="p-3 font-bold text-gray-500 font-mono text-center">${product.id}</td>
-            <td class="p-3">
-                <span class="font-bold text-gray-800">${product.name}</span>
-                <p class="text-[10px] text-gray-400 font-medium">${product.brand || 'Generic'}</p>
-            </td>
-            <td class="p-3 font-mono text-gray-600 bg-gray-50/50 rounded font-semibold text-center">${product.barcode || '---'}</td>
-            <td class="p-3 font-mono font-medium text-right">
-                <span class="text-gray-400 block text-[10px]">Cost: ₹${parseFloat(product.cost_price).toFixed(2)}</span>
-                <span class="text-blue-600 font-black">Sell: ₹${parseFloat(product.selling_price).toFixed(2)}</span>
-            </td>
-            <td class="p-3 font-mono font-bold text-center ${qty <= 5 ? 'text-red-600 bg-red-50 font-black' : 'text-gray-700'}">
-                ${qty.toFixed(2)} <span class="text-[10px] text-gray-400 block">${product.unit_type || 'PCS'}</span>
-            </td>
-            <td class="p-3 text-center">
-                <div class="flex gap-1 justify-center items-center">
-                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider shadow-sm transition" onclick="triggerQuickRestockDialog(${product.id}, '${product.name}')"><i class="fa-solid fa-plus mr-1"></i>Refill</button>
-                    <button class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider shadow-sm transition" onclick="triggerPriceUpdateDialog(${product.id}, ${product.selling_price})"><i class="fa-solid fa-tag mr-1"></i>Rate</button>
-                </div>
-            </td>
-        `;
-        inventoryTableBody.appendChild(row);
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "price-form") return;
+  e.preventDefault();
+  const id = document.getElementById("price-product-id").value;
+  try {
+    await api(`/api/products/${id}/price`, {
+      method: "PATCH",
+      body: {
+        selling_price: Number(document.getElementById("price-sell").value),
+        cost_price: document.getElementById("price-cost").value ? Number(document.getElementById("price-cost").value) : null,
+      },
     });
+    toast("Pricing updated.", "success");
+    closeModal("price-modal");
+    loadProducts();
+  } catch (err) {
+    toastError(err);
+  }
+});
+
+// ---------- Restock ----------
+function openRestockModal(productId) {
+  document.getElementById("restock-form").reset();
+  document.getElementById("restock-product-id").value = productId;
+  document.getElementById("restock-modal").style.display = "flex";
 }
 
-// ==========================================
-// 3. ATOMIC PRODUCT CREATION PIPELINE
-// ==========================================
-async function handleProductCreation(e) {
-    e.preventDefault();
-    
-    const payload = {
-        name: document.getElementById('p-name').value.trim(),
-        brand: document.getElementById('p-brand').value.trim() || "Local",
-        barcode: document.getElementById('p-barcode').value.trim() || null,
-        unit_type: document.getElementById('p-unit-type').value,
-        cost_price: parseFloat(document.getElementById('p-cost-price').value),
-        selling_price: parseFloat(document.getElementById('p-selling-price').value),
-        current_quantity: parseFloat(document.getElementById('p-initial-qty').value || 0),
-        category_id: parseInt(categoryDropdown.value)
-    };
-
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/products/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-            productForm.reset();
-            fetchMasterInventory();
-            alert("Product successfully configured and saved!");
-        } else {
-            const err = await response.json();
-            alert("Rejection: " + (err.detail || "Verification Error"));
-        }
-    } catch (error) {
-        alert("Server transmission failed.");
-    }
-}
-
-// ==========================================
-// 4. PRICE & MODAL REFILL OPERATIONS ENGINE
-// ==========================================
-function triggerQuickRestockDialog(productId, productName) {
-    if (!refillModalBackdrop || !refillTargetProductDisplay || !refillProductIdHolder || !refillQuantityInput) return;
-    
-    refillProductIdHolder.value = productId;
-    refillTargetProductDisplay.innerText = productName;
-    refillQuantityInput.value = '';
-    
-    // Find item configuration from the roster array cache layer to populate base rates
-    const targetProduct = localInventoryRosterCache.find(p => p.id === productId);
-    if (targetProduct) {
-        if (refillCostInput) refillCostInput.value = parseFloat(targetProduct.cost_price || 0);
-        if (refillSellingInput) refillSellingInput.value = parseFloat(targetProduct.selling_price || 0);
-    }
-    
-    refillModalBackdrop.classList.remove('hidden');
-    setTimeout(() => refillQuantityInput.focus(), 100);
-}
-
-function closeRefillModal() {
-    if (refillModalBackdrop) refillModalBackdrop.classList.add('hidden');
-}
-
-async function handleRefillFormSubmission(e) {
-    e.preventDefault();
-    
-    const productId = parseInt(refillProductIdHolder.value);
-    const qty = parseFloat(refillQuantityInput.value);
-    const costPrice = parseFloat(refillCostInput.value);
-    const sellingPrice = parseFloat(refillSellingInput.value);
-    
-    if (isNaN(productId) || isNaN(qty) || qty <= 0 || isNaN(costPrice) || isNaN(sellingPrice)) {
-        alert("Please declare realistic restock quantity and pricing parameters.");
-        return;
-    }
-
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/products/add-stock/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                product_id: productId, 
-                quantity: qty, 
-                cost_price: costPrice,
-                selling_price: sellingPrice,
-                notes: "Manual replenishment entry logged via console management terminal view" 
-            })
-        });
-
-        if (response.ok) {
-            closeRefillModal();
-            fetchMasterInventory();
-        } else {
-            const err = await response.json();
-            alert(`Refill rejected: ${err.detail || 'Malformed transaction payload parameter context.'}`);
-        }
-    } catch (error) {
-        console.error("Transmission error tracking stock adjustments:", error);
-        alert("Failed to sync inventory update log with store database server.");
-    }
-}
-
-async function triggerPriceUpdateDialog(productId, currentPrice) {
-    const newPriceStr = prompt(`Adjust retail selling rate (Current: ₹${currentPrice}):`);
-    if (!newPriceStr) return;
-    const newPrice = parseFloat(newPriceStr);
-    if (isNaN(newPrice) || newPrice <= 0) return;
-
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/products/${productId}/update-price`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ selling_price: newPrice, cost_price: null })
-        });
-
-        if (response.ok) {
-            fetchMasterInventory();
-            alert("Rate successfully logged in system audit path!");
-        } else {
-            const err = await response.json();
-            alert(`Adjustment Denied: ${err.detail}`);
-        }
-    } catch (error) {
-        console.error(error);
-    }
-}
-
-// ==========================================
-// 5. HARDWARE BARCODE INTERCEPTION SUITE
-// ==========================================
-function initGlobalBarcodeScannerListener() {
-    let barcodeBuffer = "";
-    let lastKeyTime = Date.now();
-
-    window.addEventListener("keydown", (e) => {
-        const targetTag = e.target.tagName.toLowerCase();
-        if (targetTag === "input" || targetTag === "select" || targetTag === "textarea") {
-            return;
-        }
-
-        const currentTime = Date.now();
-        if (currentTime - lastKeyTime > 50) {
-            barcodeBuffer = "";
-        }
-        lastKeyTime = currentTime;
-
-        if (e.key === "Enter") {
-            if (barcodeBuffer.length >= 3) {
-                processBarcodeRefillMatch(barcodeBuffer);
-                barcodeBuffer = "";
-            }
-        } else if (e.key.length === 1) {
-            barcodeBuffer += e.key;
-        }
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "restock-form") return;
+  e.preventDefault();
+  const id = document.getElementById("restock-product-id").value;
+  try {
+    const result = await api(`/api/products/${id}/restock`, {
+      method: "POST",
+      body: {
+        quantity: Number(document.getElementById("restock-qty").value),
+        unit_cost: Number(document.getElementById("restock-cost").value),
+        expiry_date: document.getElementById("restock-expiry").value || null,
+        notes: document.getElementById("restock-notes").value.trim() || null,
+      },
     });
+    toast(`Restocked — new on-hand: ${formatQty(result.new_on_hand_quantity)}.`, "success");
+    closeModal("restock-modal");
+    loadProducts();
+  } catch (err) {
+    toastError(err);
+  }
+});
+
+// ---------- Stock batches (FEFO) ----------
+async function openBatchesModal(productId, productName) {
+  document.getElementById("batches-modal-title").textContent = `Stock batches — ${productName}`;
+  const list = document.getElementById("batches-list");
+  list.innerHTML = `<div class="skeleton" style="height:50px; margin-bottom:8px;"></div><div class="skeleton" style="height:50px;"></div>`;
+  document.getElementById("batches-modal").style.display = "flex";
+
+  try {
+    const batches = await api(`/api/products/${productId}/batches`);
+    renderBatches(batches);
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--khata-red); font-size:0.85rem;">${escapeHtml(err.message)}</div>`;
+  }
 }
 
-function processBarcodeRefillMatch(scannedBarcode) {
-    const matchedProduct = localInventoryRosterCache.find(p => p.barcode === scannedBarcode);
+function renderBatches(batches) {
+  const list = document.getElementById("batches-list");
+  if (batches.length === 0) {
+    list.innerHTML = `<div style="text-align:center; color:var(--muted); padding:20px; font-size:0.85rem;">No batches recorded for this product yet.</div>`;
+    return;
+  }
 
-    if (matchedProduct) {
-        triggerQuickRestockDialog(matchedProduct.id, matchedProduct.name);
-    } else {
-        alert(`Scanned Barcode: "${scannedBarcode}" is not cataloged inside Apna Bazar's records.`);
-    }
+  const today = new Date();
+  list.innerHTML = `
+    <table class="ledger-table">
+      <thead><tr><th>Received</th><th style="text-align:right;">Remaining / Received</th><th style="text-align:right;">Unit cost</th><th>Expiry</th></tr></thead>
+      <tbody>
+        ${batches.map(b => {
+          let expiryBadge = `<span class="badge badge-gray">No expiry</span>`;
+          if (b.expiry_date) {
+            const daysLeft = Math.ceil((new Date(b.expiry_date) - today) / 86400000);
+            const cls = daysLeft < 0 ? "badge-red" : daysLeft <= 7 ? "badge-gold" : "badge-green";
+            const label = daysLeft < 0 ? "Expired" : `${daysLeft}d left`;
+            expiryBadge = `<span class="badge ${cls}">${formatDate(b.expiry_date)} · ${label}</span>`;
+          }
+          const depleted = Number(b.quantity_remaining) <= 0;
+          return `
+            <tr style="${depleted ? "opacity:0.5;" : ""}">
+              <td style="font-size:0.78rem;">${formatDate(b.received_date)}</td>
+              <td style="text-align:right;" class="font-mono">${formatQty(b.quantity_remaining)} / ${formatQty(b.quantity_received)}</td>
+              <td style="text-align:right;" class="font-mono">${formatMoney(b.unit_cost)}</td>
+              <td>${expiryBadge}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
-// ==========================================
-// 6. SEARCH SYSTEM INTEGRATION WIRE
-// ==========================================
-if (inventorySearch) {
-    inventorySearch.addEventListener('input', async () => {
-        const query = inventorySearch.value.trim();
-        if (!query) {
-            fetchMasterInventory(); 
-            return;
-        }
-
-        try {
-            const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-            const response = await fetch(`${baseUrl}/search/products/?query=${encodeURIComponent(query)}`);
-            const searchResults = await response.json();
-            if (response.ok) renderInventoryTable(searchResults);
-        } catch (error) {
-            console.error(error);
-        }
-    });
+// ---------- Bulk import ----------
+function openImportModal() {
+  document.getElementById("import-file").value = "";
+  document.getElementById("import-result").innerHTML = "";
+  document.getElementById("import-modal").style.display = "flex";
 }
 
-async function fetchCategoriesForDropdown() {
-    const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-    const response = await fetch(`${baseUrl}/categories/`);
-    const categories = await response.json();
-    if (response.ok && categories.length > 0) {
-        categoryDropdown.innerHTML = '<option value="">-- Choose Category --</option>';
-        categories.forEach(cat => {
-            categoryDropdown.insertAdjacentHTML('beforeend', `<option value="${cat.id}">${cat.name}</option>`);
-        });
-    }
+async function submitImport() {
+  const fileInput = document.getElementById("import-file");
+  const resultBox = document.getElementById("import-result");
+  if (!fileInput.files.length) { toast("Choose a CSV file first.", "error"); return; }
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  resultBox.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Importing…`;
+  try {
+    const result = await api("/api/products/bulk-import", { method: "POST", body: formData, isForm: true });
+    resultBox.innerHTML = `
+      <div class="badge badge-green">Created ${result.created_count}</div>
+      <div class="badge badge-gray" style="margin-left:6px;">Skipped ${result.skipped_count}</div>
+      <div class="badge badge-red" style="margin-left:6px;">Errors ${result.error_count}</div>
+      ${result.errors.length ? `<div style="margin-top:8px; max-height:120px; overflow-y:auto; font-size:0.76rem; color:var(--khata-red);">
+        ${result.errors.map(e => `Row ${e.row}: ${escapeHtml(e.reason)}`).join("<br>")}
+      </div>` : ""}
+    `;
+    loadProducts();
+    loadCategoriesForFilters();
+  } catch (err) {
+    resultBox.innerHTML = `<span style="color:var(--khata-red);">${escapeHtml(err.message)}</span>`;
+  }
 }

@@ -1,116 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retail POS - Billing Counter</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Billing Counter — Apna Bazar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
 </head>
-<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+<body>
+<div class="app-shell" id="ab-app"></div>
 
-    <nav class="bg-blue-600 text-white shadow-md px-6 py-4 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-            <i class="fa-solid fa-calculator text-2xl"></i>
-            <span class="text-xl font-bold tracking-wide">Apna Bazar POS Terminal</span>
-        </div>
-        <div class="flex space-x-6 font-medium text-sm">
-            <a href="index.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a>
-            <a href="billing.html" class="text-white border-b-2 border-white pb-1"><i class="fa-solid fa-calculator mr-1"></i> Billing Counter</a>
-            <a href="products.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-box mr-1"></i> Inventory</a>
-            <a href="categories.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-folder-tree mr-1"></i> Categories</a>
-        </div>
-    </nav>
-
-    <div class="flex flex-col lg:flex-row flex-1 p-6 gap-6 max-w-7xl mx-auto w-full">
-        <div class="flex-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                    <label for="barcode-input" class="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Hardware Barcode Scanner Stream Reader Inputs</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-2.5 text-gray-400 text-xs"><i class="fa-solid fa-barcode"></i></span>
-                        <input type="text" id="barcode-input" class="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Continuous polling scanner scan path ready...">
-                    </div>
-                </div>
-                <div class="relative">
-                    <label for="search-input" class="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Manual Inventory Product Keyword Lookup</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-2.5 text-gray-400 text-xs"><i class="fa-solid fa-magnifying-glass"></i></span>
-                        <input type="text" id="search-input" class="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type product name or brand...">
-                    </div>
-                    <div id="search-results-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-white shadow-xl border rounded-lg z-50 max-h-60 overflow-y-auto hidden"></div>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto flex-1 border border-gray-100 rounded-xl">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-[10px] uppercase text-gray-400 font-black border-b">
-                        <tr>
-                            <th class="p-3">Product Description</th>
-                            <th class="p-3">Retail Pricing Rate</th>
-                            <th class="p-3">Quantity Scale</th>
-                            <th class="p-3">Line Net Sum</th>
-                            <th class="p-3 text-center">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="cart-table-body" class="divide-y divide-gray-100">
-                        </tbody>
-                </table>
-                <div id="empty-cart-view" class="p-12 text-center text-gray-400 flex flex-col items-center justify-center space-y-2">
-                    <i class="fa-solid fa-basket-shopping text-4xl text-gray-200"></i>
-                    <p class="text-xs font-bold">Register terminal cart memory space is empty</p>
-                </div>
-            </div>
-        </div>
-
-        <aside class="w-full lg:w-80 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-between">
-            <div>
-                <h3 class="font-black text-gray-900 text-sm tracking-tight uppercase border-b pb-3 mb-4">Invoice Configuration Details</h3>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label for="customer-details-input" class="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Customer Identifier / Account Detail</label>
-                        <input type="text" id="customer-details-input" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="Required for Partial Payments/Credit">
-                    </div>
-
-                    <div>
-                        <label for="payment-method-select" class="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Primary Settlement Channels Mode</label>
-                        <select id="payment-method-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-bold text-gray-700 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="CASH">CASH RECORD CLEARANCE</option>
-                            <option value="ONLINE">ONLINE / QR PAY DIGI MATRIX</option>
-                            <option value="CREDIT">CREDIT ASSIGNMENT (UDHAAR KHATA)</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-2 pt-2 border-t border-dashed">
-                        <div>
-                            <label for="checkout-amount-paid" class="text-[9px] font-black text-emerald-600 uppercase tracking-wider block mb-1">Cash Paid (₹)</label>
-                            <input type="number" id="checkout-amount-paid" class="w-full px-2 py-1.5 border border-emerald-300 rounded-md text-xs font-mono font-black text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500" value="0" min="0" step="any">
-                        </div>
-                        <div>
-                            <span class="text-[9px] font-black text-red-500 uppercase tracking-wider block mb-1">Balance Due (₹)</span>
-                            <div id="checkout-amount-pending" class="w-full px-2 py-1.5 bg-red-50 border border-red-200 rounded-md text-xs font-mono font-black text-red-600 text-center">₹0.00</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-8">
-                <div class="bg-gray-900 text-emerald-400 p-4 rounded-xl text-center shadow-inner mb-4 font-mono">
-                    <div class="text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Sum Aggregate Count Total</div>
-                    <div class="text-2xl font-black"><span id="summary-grand-total">₹0.00</span></div>
-                    <div class="text-[9px] text-gray-400 mt-1 font-sans">Accumulated Items Scale Count: <span id="summary-total-items" class="font-bold font-mono">0</span> units</div>
-                </div>
-                
-                <button id="checkout-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-xl shadow-md text-xs tracking-wider uppercase transition flex items-center justify-center space-x-2">
-                    <i class="fa-solid fa-circle-check text-sm"></i>
-                    <span>Finalize Settlement Transaction</span>
-                </button>
-            </div>
-        </aside>
-    </div>
-
-    <script src="js/app.js"></script>
-    <script src="js/billing.js"></script>
+<script src="js/core.js"></script>
+<script src="js/billing.js"></script>
 </body>
 </html>

@@ -1,167 +1,92 @@
-// ==========================================
-// INITIALIZATION & TIMEFRAME STATE TRACKING
-// ==========================================
-let businessChartInstance = null;
-let currentSelectedRange = "today"; // Fallback default timeline state scope
+requireAuth(["OWNER", "ADMIN"]);
+renderShell("index.html", "Dashboard");
 
-document.addEventListener("DOMContentLoaded", () => {
-    // Initial loading execution sequence
-    fetchDashboardAnalytics(currentSelectedRange);
-});
+const content = document.getElementById("ab-page-content");
+content.innerHTML = `
+  <p style="font-size:0.82rem; color:var(--muted); margin-bottom:18px;">
+    All-time totals across every sale, purchase and outstanding khata balance recorded so far.
+  </p>
+  <div id="stat-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:14px; margin-bottom:24px;"></div>
+  <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:18px;" id="lower-grid"></div>
+`;
 
-// ==========================================
-// INTERACTIVE TIMEFRAME SWITCHER CAPABILITY
-// ==========================================
-async function changeTimeframe(selectedRangeType) {
-    currentSelectedRange = selectedRangeType;
-    
-    // 1. Instantly update UI selection pill focus styles
-    document.querySelectorAll(".time-pill").forEach(button => {
-        button.className = "time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 text-gray-600 hover:text-gray-900 ml-1";
-    });
-    
-    const activeBtn = document.getElementById(`btn-${selectedRangeType}`);
-    if (activeBtn) {
-        activeBtn.className = "time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 bg-blue-600 text-white shadow-sm";
-    }
+const statGrid = document.getElementById("stat-grid");
+statGrid.innerHTML = Array.from({ length: 5 }).map(() => `<div class="stat-tile"><div class="skeleton" style="height:12px; width:60%; margin-bottom:10px;"></div><div class="skeleton" style="height:22px; width:80%;"></div></div>`).join("");
 
-    // 2. Refresh dashboard analytics engine with chosen timeframe
-    await fetchDashboardAnalytics(currentSelectedRange);
+loadDashboard();
+
+async function loadDashboard() {
+  try {
+    const d = await api("/api/dashboard/analytics");
+    renderStats(d);
+    renderLower(d);
+  } catch (err) {
+    toastError(err);
+    statGrid.innerHTML = `<div class="card" style="padding:20px; grid-column:1/-1;">Could not load analytics. ${escapeHtml(err.message)}</div>`;
+  }
 }
 
-// ==========================================
-// METRICS DATA ACQUISITION FROM BACKEND
-// ==========================================
-async function fetchDashboardAnalytics(rangeType) {
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        
-        // 🌟 CONNECTED: Directly targets your absolute endpoint /dashboard/metrics
-        const response = await fetch(`${baseUrl}/dashboard/metrics?range_type=${rangeType}`); 
-        const data = await response.json();
-
-        if (response.ok) {
-            updateExecutiveMetricsDOM(data);
-            renderBusinessHealthChart(data);
-            renderLowStockTable(data.low_stock_alerts);
-        } else {
-            console.error("Backend validation rejection:", data.detail);
-        }
-    } catch (error) {
-        console.error("Dashboard engine failed to stream metric parameters:", error);
-    }
+function renderStats(d) {
+  const tiles = [
+    { label: "Total Sales Revenue", value: formatMoney(d.total_sales_revenue), icon: "fa-solid fa-receipt", accent: "var(--ink-navy)" },
+    { label: "Cash / Liquid Received", value: formatMoney(d.total_liquid_received), icon: "fa-solid fa-coins", accent: "var(--settled-green)" },
+    { label: "Outstanding Khata (Udhaar)", value: formatMoney(d.total_market_debt), icon: "fa-solid fa-book", accent: "var(--khata-red)" },
+    { label: "Total Procurement Spend", value: formatMoney(d.total_purchase_spend), icon: "fa-solid fa-truck-ramp-box", accent: "var(--brass-gold)" },
+    { label: "Net Profit", value: formatMoney(d.overall_net_profit), icon: "fa-solid fa-chart-line", accent: Number(d.overall_net_profit) >= 0 ? "var(--settled-green)" : "var(--khata-red)" },
+  ];
+  statGrid.innerHTML = tiles.map(t => `
+    <div class="stat-tile">
+      <div class="stat-label"><i class="${t.icon}" style="color:${t.accent}; margin-right:5px;"></i>${t.label}</div>
+      <div class="stat-value" style="color:${t.accent}">${t.value}</div>
+    </div>
+  `).join("");
 }
 
-// ==========================================
-// DATA MAPPING INTO DOM NODES
-// ==========================================
-function updateExecutiveMetricsDOM(data) {
-    document.getElementById("metric-liquid-cash").innerText = `₹${parseFloat(data.total_liquid_received || 0).toFixed(2)}`;
-    document.getElementById("metric-market-debt").innerText = `₹${parseFloat(data.total_market_debt || 0).toFixed(2)}`;
-    document.getElementById("metric-net-profit").innerText = `₹${parseFloat(data.overall_net_profit || 0).toFixed(2)}`;
-    document.getElementById("metric-low-stock-count").innerText = data.low_stock_count || 0;
-    document.getElementById("metric-sales-turnover").innerText = `Gross Sales Volume: ₹${parseFloat(data.total_sales_revenue || 0).toFixed(2)}`;
-    document.getElementById("metric-purchase-spend").innerText = `₹${parseFloat(data.total_purchase_spend || 0).toFixed(2)}`;
+function renderLower(d) {
+  const lower = document.getElementById("lower-grid");
 
-    // Parse Top Moving Item
-    const topProdDisplay = document.getElementById("top-product-display");
-    const topProdUnits = document.getElementById("top-product-units");
-    
-    if (data.top_selling_product) {
-        topProdDisplay.innerText = data.top_selling_product.name;
-        topProdUnits.innerText = `${parseFloat(data.top_selling_product.total_quantity_sold).toFixed(0)} Units Distributed`;
-    } else {
-        topProdDisplay.innerText = "No Sales Logged Yet";
-        topProdUnits.innerText = "0 Items Swiped Out";
-    }
-}
+  const alertsHtml = d.low_stock_alerts.length === 0
+    ? `<div style="padding:20px; text-align:center; color:var(--muted); font-size:0.85rem;">
+         <i class="fa-solid fa-circle-check" style="color:var(--settled-green); font-size:1.4rem; display:block; margin-bottom:6px;"></i>
+         Every item is above the low-stock line.
+       </div>`
+    : `<table class="ledger-table"><thead><tr><th>Product</th><th>Brand</th><th style="text-align:right;">On hand</th></tr></thead><tbody>
+        ${d.low_stock_alerts.map(a => `
+          <tr>
+            <td style="font-weight:600;">${escapeHtml(a.product_name)}</td>
+            <td>${escapeHtml(a.brand)}</td>
+            <td style="text-align:right;"><span class="badge badge-red">${formatQty(a.current_quantity)} left</span></td>
+          </tr>
+        `).join("")}
+       </tbody></table>`;
 
-// ==========================================
-// RENDER INTERACTIVE VISUAL CHART GENERATOR 
-// ==========================================
-function renderBusinessHealthChart(data) {
-    const ctx = document.getElementById('business-health-chart');
-    if (!ctx) return;
+  const top = d.top_selling_product;
 
-    // Destroy existing instance to prevent chart flicker bugs during timeframe switches
-    if (businessChartInstance) {
-        businessChartInstance.destroy();
-    }
+  lower.innerHTML = `
+    <div class="card">
+      <div style="padding:16px 18px; border-bottom:1px solid #EEE9DB; display:flex; align-items:center; justify-content:space-between;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); font-size:1rem;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:var(--khata-red); margin-right:6px;"></i>Low Stock Alerts
+        </h3>
+        <span class="badge badge-red">${d.low_stock_count} item${d.low_stock_count === 1 ? "" : "s"}</span>
+      </div>
+      ${alertsHtml}
+    </div>
 
-    businessChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Wholesale Spend', 'Liquid Cash Collected', 'Udhaar Balance Out', 'Net Clear Profits'],
-            datasets: [{
-                label: 'Value (₹)',
-                data: [
-                    parseFloat(data.total_purchase_spend || 0),
-                    parseFloat(data.total_liquid_received || 0),
-                    parseFloat(data.total_market_debt || 0),
-                    parseFloat(data.overall_net_profit || 0)
-                ],
-                backgroundColor: [
-                    'rgba(148, 163, 184, 0.8)',  // Slate Gray (Procurement Cost)
-                    'rgba(52, 211, 153, 0.8)',   // Emerald Green (Liquid Cash)
-                    'rgba(248, 113, 113, 0.8)',  // Crimson Red (Udhaar Outstanding)
-                    'rgba(96, 165, 250, 0.8)'    // Bright Blue (Pure Operating Profits)
-                ],
-                borderColor: [
-                    'rgb(148, 163, 184)',
-                    'rgb(52, 211, 153)',
-                    'rgb(248, 113, 113)',
-                    'rgb(96, 165, 250)'
-                ],
-                borderWidth: 2,
-                borderRadius: 8
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                    ticks: { font: { family: 'monospace', weight: 'bold' } }
-                },
-                x: {
-                    grid: { display: false }
-                }
-            }
-        }
-    });
-}
-
-// ==========================================
-// LOW STOCK ROSTER RENDER ENGINE
-// ==========================================
-function renderLowStockTable(alertsList) {
-    const tbody = document.getElementById("low-stock-table-body");
-    if (!tbody) return;
-    tbody.innerHTML = "";
-
-    if (!alertsList || alertsList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-emerald-600 font-bold bg-emerald-50/50 text-xs"><i class="fa-solid fa-circle-check mr-1"></i> All stock balances healthy. No replenishment needed!</td></tr>`;
-        return;
-    }
-
-    alertsList.forEach(item => {
-        const row = document.createElement("tr");
-        row.className = "border-b text-xs hover:bg-amber-50/20 transition";
-        row.innerHTML = `
-            <td class="p-3 font-mono font-bold text-gray-500 text-center">${item.id}</td>
-            <td class="p-3 font-black text-gray-800">${item.name}</td>
-            <td class="p-3 font-mono text-center text-red-600 font-black bg-red-50/50">${parseFloat(item.current_quantity).toFixed(0)} Left</td>
-            <td class="p-3 text-center">
-                <a href="products.html" class="inline-block bg-amber-600 hover:bg-amber-700 text-white font-black px-3 py-1 rounded-md text-[10px] uppercase tracking-wider shadow-sm transition">
-                    <i class="fa-solid fa-truck-ramp-box mr-1"></i> Restock SKU
-                </a>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
+    <div class="card" style="padding:18px;">
+      <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); font-size:1rem; margin-bottom:12px;">
+        <i class="fa-solid fa-medal" style="color:var(--brass-gold); margin-right:6px;"></i>Top Selling Product
+      </h3>
+      ${top ? `
+        <div style="font-weight:700; font-size:1.05rem; color:var(--ink-navy);">${escapeHtml(top.name)}</div>
+        <div style="font-size:0.82rem; color:var(--muted); margin:2px 0 10px;">${escapeHtml(top.brand)} · ${escapeHtml(top.unit_type)}</div>
+        <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:0.86rem;">
+          <span>Selling price</span><span>${formatMoney(top.selling_price)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:0.86rem;">
+          <span>In stock</span><span>${formatQty(top.current_quantity)}</span>
+        </div>
+      ` : `<div style="color:var(--muted); font-size:0.85rem;">No sales recorded yet.</div>`}
+    </div>
+  `;
 }

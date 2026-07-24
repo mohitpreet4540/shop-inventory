@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — Apna Bazar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body style="background: var(--ink-navy); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;">
+
+  <div style="width:100%; max-width:400px;">
+    <div style="text-align:center; margin-bottom:22px; color:#fff;">
+      <div class="font-slab" style="font-size:1.9rem; font-weight:700;"><i class="fa-solid fa-store mr-2" style="color:var(--brass-gold);"></i>Apna Bazar</div>
+      <div style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; color:#97A3C4; margin-top:2px;">Shop Ledger &amp; Billing</div>
+    </div>
+
+    <div class="card" style="padding:28px;">
+      <h1 class="font-slab" style="font-size:1.15rem; font-weight:700; color:var(--ink-navy); margin-bottom:2px;">Sign in</h1>
+      <p style="font-size:0.82rem; color:var(--muted); margin-bottom:18px;">Enter your counter credentials to continue.</p>
+
+      <form id="login-form" style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label class="field-label">Username</label>
+          <input class="input" type="text" id="login-username" autocomplete="username" required>
+        </div>
+        <div>
+          <label class="field-label">Password</label>
+          <input class="input" type="password" id="login-password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="justify-content:center; padding:10px;" id="login-submit-btn">
+          <i class="fa-solid fa-right-to-bracket"></i> Sign in
+        </button>
+      </form>
+
+      <div class="divider" style="margin:18px 0 14px;"></div>
+      <button onclick="document.getElementById('setup-modal').style.display='flex'" style="font-size:0.78rem; color:var(--muted); text-decoration:underline; background:none; border:none; cursor:pointer; width:100%; text-align:center;">
+        First time setting up this shop? Create the owner account
+      </button>
+    </div>
+  </div>
+
+  <!-- Owner bootstrap modal -->
+  <div id="setup-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:420px;">
+      <div style="padding:22px;">
+        <h2 class="font-slab" style="font-size:1.1rem; font-weight:700; color:var(--ink-navy);">Create the owner account</h2>
+        <p style="font-size:0.8rem; color:var(--muted); margin:6px 0 16px;">
+          This works only once — the very first account on a fresh shop. If an owner account already exists, this will be refused.
+        </p>
+        <form id="bootstrap-form" style="display:flex; flex-direction:column; gap:12px;">
+          <div>
+            <label class="field-label">Owner username</label>
+            <input class="input" type="text" id="bs-username" minlength="3" required>
+          </div>
+          <div>
+            <label class="field-label">Password (min. 6 characters)</label>
+            <input class="input" type="password" id="bs-password" minlength="6" required>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="document.getElementById('setup-modal').style.display='none'">Cancel</button>
+            <button type="submit" class="btn btn-gold" style="flex:1; justify-content:center;">Create owner</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/core.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>

@@ -1,24 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from app.database import SessionLocal
+from app.database import get_db  # 🌟 now importing the shared dependency instead of redefining it
+from app.dependencies import get_current_user
 from app import schemas, models
 
 router = APIRouter(prefix="/api/search", tags=["Global Search Engine"])
 
-# Dependency to get DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 # =================================================================
-# GLOBAL INVENTORY PREVIEW SEARCH ENGINE
+# GLOBAL INVENTORY PREVIEW SEARCH ENGINE (Any logged-in role)
 # =================================================================
 @router.get("/products", response_model=List[schemas.ProductSearchResponse])
-def search_products(q: Optional[str] = None, db: Session = Depends(get_db)):
+def search_products(q: Optional[str] = None, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     try:
         # Return an empty list immediately if no search text is passed
         if not q:

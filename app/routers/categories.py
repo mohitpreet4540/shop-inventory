@@ -2,35 +2,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
-from app.database import SessionLocal
+from app.database import get_db
+from app.dependencies import require_roles, get_current_user
 from app import schemas, models
 
 router = APIRouter(prefix="/api/categories", tags=["Category Tree Management"])
 
-# Dependency to get DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 # =================================================================
-# 1. CREATE CATEGORY OR SUBCATEGORY
+# 1. CREATE CATEGORY OR SUBCATEGORY (OWNER, ADMIN)
 # =================================================================
 @router.post("/", response_model=schemas.CategoryResponse, status_code=status.HTTP_201_CREATED)
-def create_category(category_data: schemas.CategoryCreate, db: Session = Depends(get_db)):
+def create_category(
+    category_data: schemas.CategoryCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("OWNER", "ADMIN")),
+):
     try:
-        # If a parent_id is provided, verify it points to a real category
         if category_data.parent_id:
             parent = db.query(models.Category).filter(models.Category.id == category_data.parent_id).first()
             if not parent:
                 raise HTTPException(
-                    status_code=404, 
+                    status_code=404,
                     detail=f"Parent category with ID {category_data.parent_id} does not exist."
                 )
-            
-            # Enforce a shallow 2-level limit: Subcategories cannot become parents
             if parent.parent_id is not None:
                 raise HTTPException(
                     status_code=400,
@@ -55,23 +49,19 @@ def create_category(category_data: schemas.CategoryCreate, db: Session = Depends
         raise HTTPException(status_code=500, detail=f"Database Insertion Error: {str(e)}")
 
 # =================================================================
-# 2. FETCH REAL-TIME HIERARCHICAL TREE (With live product counters)
+# 2. FETCH REAL-TIME HIERARCHICAL TREE (Any logged-in role — cashiers need this for billing)
 # =================================================================
 @router.get("/tree", response_model=List[schemas.CategoryTreeResponse])
-def get_category_tree(db: Session = Depends(get_db)):
-    # Pull all categories out of the database
+def get_category_tree(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     categories = db.query(models.Category).all()
-    
-    # Calculate product metrics dynamically using the junction table
+
     counts_query = db.query(
         models.product_category_links.c.category_id,
         func.count(models.product_category_links.c.product_id).label("total")
     ).group_by(models.product_category_links.c.category_id).all()
-    
-    # Convert counts mapping into a fast-lookup Python dictionary
+
     product_counts = {cat_id: count for cat_id, count in counts_query}
 
-    # Step A: Transform rows into dictionary structures containing the product counts
     nodes = {}
     for cat in categories:
         nodes[cat.id] = {
@@ -83,34 +73,33 @@ def get_category_tree(db: Session = Depends(get_db)):
             "subcategories": []
         }
 
-    # Step B: Assemble the tree hierarchy by mapping children straight to parents
     root_nodes = []
     for cat_id, node in nodes.items():
         parent_id = node["parent_id"]
         if parent_id is None:
-            # This is a master tier parent category
             root_nodes.append(node)
         else:
-            # This is a subcategory; append it into the parent's nested layout array
             if parent_id in nodes:
                 nodes[parent_id]["subcategories"].append(node)
-                
+
     return root_nodes
 
 # =================================================================
-# 3. SAFE SOFT-INACTIVATION TOGGLE (No hard deletion)
+# 3. SAFE SOFT-INACTIVATION TOGGLE (OWNER, ADMIN)
 # =================================================================
 @router.patch("/{category_id}/toggle", response_model=schemas.CategoryResponse)
-def toggle_category_status(category_id: int, db: Session = Depends(get_db)):
+def toggle_category_status(
+    category_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("OWNER", "ADMIN")),
+):
     try:
         category = db.query(models.Category).filter(models.Category.id == category_id).first()
         if not category:
             raise HTTPException(status_code=404, detail="Target category profile not found.")
 
-        # Flip the binary state switch
         category.is_active = not category.is_active
-        
-        # Cascading protection rules: If a parent is deactivated, automatically deactivate its children
+
         if not category.is_active and category.parent_id is None:
             db.query(models.Category).filter(models.Category.parent_id == category.id).update(
                 {"is_active": False}

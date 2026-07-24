@@ -1,218 +1,124 @@
-// ==========================================
-// INITIALIZATION & STATE MANAGEMENT
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    // Run core execution layout routines on startup
-    syncCategoryRegistryLayers();
+requireAuth(["OWNER", "ADMIN", "CASHIER"]);
+renderShell("categories.html", "Categories");
 
-    // Attach listener to manual refresh sync trigger button
-    const refreshTrigger = document.getElementById('refresh-tree-trigger');
-    if (refreshTrigger) {
-        refreshTrigger.addEventListener('click', syncCategoryRegistryLayers);
-    }
+const canManage = Session.hasRole("OWNER", "ADMIN");
+const content = document.getElementById("ab-page-content");
 
-    // Intercept and process creation forms
-    const creationForm = document.getElementById('category-creation-form');
-    if (creationForm) {
-        creationForm.addEventListener('submit', commitCategoryFormSubmission);
-    }
+content.innerHTML = `
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <p style="font-size:0.82rem; color:var(--muted); max-width:520px;">
+      Two levels deep: a main category, and subcategories underneath it. Turning off a main category also turns off everything nested inside it.
+    </p>
+    ${canManage ? `<button class="btn btn-primary" onclick="openCategoryModal()"><i class="fa-solid fa-plus"></i> Add category</button>` : ""}
+  </div>
+
+  <div id="tree-wrap" style="display:flex; flex-direction:column; gap:12px;"></div>
+
+  <div id="category-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-panel" style="max-width:400px;">
+      <div style="padding:20px;">
+        <h3 class="font-slab" style="font-weight:700; color:var(--ink-navy); margin-bottom:12px;">Add category</h3>
+        <form id="category-form" style="display:flex; flex-direction:column; gap:10px;">
+          <div><label class="field-label">Name</label><input class="input" id="cat-name" required></div>
+          <div>
+            <label class="field-label">Parent category (leave blank for a main category)</label>
+            <select class="input" id="cat-parent"><option value="">— None, this is a main category —</option></select>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" class="btn btn-outline" style="flex:1; justify-content:center;" onclick="document.getElementById('category-modal').style.display='none'">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center;">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+`;
+
+loadTree();
+
+async function loadTree() {
+  const wrap = document.getElementById("tree-wrap");
+  wrap.innerHTML = `<div class="skeleton" style="height:70px;"></div><div class="skeleton" style="height:70px;"></div>`;
+  try {
+    const tree = await api("/api/categories/tree");
+    renderTree(tree);
+    fillParentSelect(tree);
+  } catch (err) {
+    toastError(err);
+    wrap.innerHTML = `<div class="card" style="padding:20px; text-align:center; color:var(--muted);">Could not load categories.</div>`;
+  }
+}
+
+function fillParentSelect(tree) {
+  const sel = document.getElementById("cat-parent");
+  sel.innerHTML = `<option value="">— None, this is a main category —</option>` +
+    tree.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+}
+
+function renderTree(tree) {
+  const wrap = document.getElementById("tree-wrap");
+  if (tree.length === 0) {
+    wrap.innerHTML = `<div class="card" style="padding:30px; text-align:center; color:var(--muted);">No categories yet. Add your first main category to get started.</div>`;
+    return;
+  }
+  wrap.innerHTML = tree.map(node => `
+    <div class="card" style="padding:16px 18px; ${node.is_active ? "" : "opacity:0.55;"}">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <i class="fa-solid fa-folder-tree" style="color:var(--brass-gold);"></i>
+          <span style="font-weight:700; font-family:'Roboto Slab',serif; color:var(--ink-navy);">${escapeHtml(node.name)}</span>
+          <span class="badge badge-navy">${node.product_count} product${node.product_count === 1 ? "" : "s"}</span>
+          <span class="badge ${node.is_active ? "badge-green" : "badge-gray"}">${node.is_active ? "Active" : "Inactive"}</span>
+        </div>
+        ${canManage ? `<button class="btn btn-outline btn-sm" onclick="toggleCategory(${node.id})">
+          <i class="fa-solid fa-power-off"></i> ${node.is_active ? "Deactivate" : "Activate"}
+        </button>` : ""}
+      </div>
+      ${node.subcategories.length ? `
+        <div style="margin-top:10px; padding-left:28px; display:flex; flex-direction:column; gap:8px;">
+          ${node.subcategories.map(sub => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--ledger-cream); border-radius:8px; ${sub.is_active ? "" : "opacity:0.6;"}">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-angles-right" style="color:var(--muted); font-size:0.75rem;"></i>
+                <span style="font-weight:600;">${escapeHtml(sub.name)}</span>
+                <span class="badge badge-navy">${sub.product_count}</span>
+                <span class="badge ${sub.is_active ? "badge-green" : "badge-gray"}">${sub.is_active ? "Active" : "Inactive"}</span>
+              </div>
+              ${canManage ? `<button class="btn btn-outline btn-sm" onclick="toggleCategory(${sub.id})">
+                <i class="fa-solid fa-power-off"></i> ${sub.is_active ? "Deactivate" : "Activate"}
+              </button>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+    </div>
+  `).join("");
+}
+
+function openCategoryModal() {
+  document.getElementById("category-form").reset();
+  document.getElementById("category-modal").style.display = "flex";
+}
+
+document.getElementById("category-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = document.getElementById("cat-name").value.trim();
+  const parentId = document.getElementById("cat-parent").value;
+  try {
+    await api("/api/categories/", { method: "POST", body: { name, parent_id: parentId ? Number(parentId) : null } });
+    toast("Category added.", "success");
+    document.getElementById("category-modal").style.display = "none";
+    loadTree();
+  } catch (err) {
+    toastError(err);
+  }
 });
 
-// ==========================================
-// DYNAMIC HIERARCHY MATRIX SYNC ENGINE
-// ==========================================
-async function syncCategoryRegistryLayers() {
-    const treeRoot = document.getElementById('category-hierarchy-tree-root');
-    const loaderSpinner = document.getElementById('tree-loader-spinner');
-    const emptyNotice = document.getElementById('tree-empty-notice');
-    const totalCounter = document.getElementById('total-category-counter');
-
-    if (!treeRoot) return;
-
-    loaderSpinner.classList.remove('hidden');
-    treeRoot.innerHTML = '';
-    emptyNotice.classList.add('hidden');
-    
-    try {
-        // Absolute fallback URL matching dashboard configuration
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/categories`);
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Data synchronization failure down network pipeline');
-        }
-        
-        const rootCategories = await response.json();
-        
-        if (totalCounter) {
-            let totalCount = rootCategories.length;
-            rootCategories.forEach(cat => {
-                if (cat.subcategories) totalCount += cat.subcategories.length;
-            });
-            totalCounter.innerText = totalCount;
-        }
-
-        if (rootCategories.length === 0) {
-            loaderSpinner.classList.add('hidden');
-            emptyNotice.classList.remove('hidden');
-            populateParentSelectionDropdown([]);
-            return;
-        }
-
-        populateParentSelectionDropdown(rootCategories);
-        loaderSpinner.classList.add('hidden');
-        
-        rootCategories.forEach(rootCategory => {
-            const rootCard = document.createElement('div');
-            rootCard.className = "bg-gray-50 border border-gray-200 rounded-xl overflow-hidden shadow-sm mb-3";
-            
-            let subcategoryRowsHTML = '';
-            const validSubcategories = rootCategory.subcategories || [];
-
-            if (validSubcategories.length > 0) {
-                validSubcategories.forEach(sub => {
-                    subcategoryRowsHTML += `
-                        <div class="flex items-center justify-between py-2.5 px-4 bg-white border-t border-gray-100 text-sm pl-8">
-                            <div class="flex items-center space-x-2 text-gray-700">
-                                <i class="fa-solid fa-turn-up rotate-90 text-gray-300 text-xs mb-1"></i>
-                                <span class="font-medium">${sub.name}</span>
-                            </div>
-                            <div class="flex items-center space-x-2">
-                                <span class="text-xs bg-indigo-50 text-indigo-600 font-semibold px-2 py-0.5 rounded-full border border-indigo-100">Subgroup</span>
-                                <button class="text-xs text-emerald-500 p-1 transition" onclick="triggerInactivationAlert('${sub.name}')" title="Active">
-                                    <i class="fa-solid fa-toggle-on text-sm"></i>
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-            } else {
-                subcategoryRowsHTML = `
-                    <div class="py-3 px-4 bg-white border-t border-gray-100 text-xs text-gray-400 italic pl-8">
-                        No secondary sub-group classifications assigned under this department root.
-                    </div>
-                `;
-            }
-
-            rootCard.innerHTML = `
-                <div class="flex items-center justify-between py-3.5 px-4 bg-gray-100 text-sm font-bold text-gray-800">
-                    <div class="flex items-center space-x-2">
-                        <i class="fa-solid fa-folder text-amber-500"></i>
-                        <span>${rootCategory.name}</span>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-semibold">Primary Root</span>
-                        <button class="text-xs text-emerald-500 p-1 transition" onclick="triggerInactivationAlert('${rootCategory.name}')" title="Active">
-                            <i class="fa-solid fa-toggle-on text-sm"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="bg-white">
-                    ${subcategoryRowsHTML}
-                </div>
-            `;
-            
-            treeRoot.appendChild(rootCard);
-        });
-
-    } catch (err) {
-        loaderSpinner.classList.add('hidden');
-        console.error("Categories engine pipeline crash:", err);
-        triggerSystemToast(err.message, 'error');
-    }
-}
-
-// ==========================================
-// INPUT ENTRY COMMIT OPERATION ROUTINES
-// ==========================================
-async function commitCategoryFormSubmission(e) {
-    e.preventDefault();
-    
-    const nameInput = document.getElementById('category-name-input');
-    const parentSelect = document.getElementById('parent-category-select');
-    
-    if (!nameInput) return;
-    
-    const rawName = nameInput.value.trim();
-    const chosenParent = parentSelect ? parentSelect.value : "";
-
-    if (!rawName) return;
-
-    const payload = {
-        name: rawName,
-        parent_id: chosenParent ? parseInt(chosenParent, 10) : null
-    };
-
-    try {
-        const baseUrl = window.API_BASE_URL || 'http://127.0.0.1:8000';
-        const response = await fetch(`${baseUrl}/categories/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Failed to create new category record entry');
-        }
-
-        triggerSystemToast(`Category entry successfully committed and registered!`);
-        nameInput.value = '';
-        if (parentSelect) parentSelect.value = '';
-        
-        await syncCategoryRegistryLayers();
-
-    } catch (error) {
-        console.error("Category configuration storage fault:", error);
-        triggerSystemToast(error.message, 'error');
-    }
-}
-
-// ==========================================
-// HELPER UI COMPONENT UTILITIES
-// ==========================================
-function populateParentSelectionDropdown(rootNodes) {
-    const parentSelect = document.getElementById('parent-category-select');
-    if (!parentSelect) return;
-
-    parentSelect.innerHTML = '<option value="">None — Treat as Primary Department Root</option>';
-    
-    rootNodes.forEach(node => {
-        const option = document.createElement('option');
-        option.value = node.id;
-        option.innerText = node.name;
-        parentSelect.appendChild(option);
-    });
-}
-
-function triggerSystemToast(message, type = 'success') {
-    const toast = document.getElementById('toast-notification');
-    const iconBox = document.getElementById('toast-icon-box');
-    const icon = document.getElementById('toast-icon');
-    const msgBox = document.getElementById('toast-message');
-
-    if (!toast || !msgBox) return;
-
-    msgBox.innerText = message;
-    
-    if (type === 'error') {
-        if (iconBox) iconBox.className = "inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-red-500 bg-red-100 rounded-lg";
-        if (icon) icon.className = "fa-solid fa-triangle-exclamation";
-    } else {
-        if (iconBox) iconBox.className = "inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-emerald-500 bg-emerald-100 rounded-lg";
-        if (icon) icon.className = "fa-solid fa-circle-check";
-    }
-
-    toast.classList.remove('hidden');
-    setTimeout(() => toast.classList.add('hidden'), 4000);
-}
-
-function triggerInactivationAlert(categoryName) {
-    alert(
-        `🛡️ ERP Safety Notice:\n\n` +
-        `The classification entry "${categoryName}" cannot be hard-deleted because historical sales transactions, ` +
-        `invoice ledger line records, or active stock items rely on its relational mapping references.\n\n` +
-        `To alter this configuration, please use the Bulk Move panel on the Inventory screen to reassign any linked products first.`
-    );
+async function toggleCategory(id) {
+  try {
+    await api(`/api/categories/${id}/toggle`, { method: "PATCH" });
+    loadTree();
+  } catch (err) {
+    toastError(err);
+  }
 }

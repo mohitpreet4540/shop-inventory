@@ -7,24 +7,25 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/code/app
-      # Syncs the static files out of the container so they automatically appear on your machine
+      
       - ./static:/code/static
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      # Optimization: Prevents Python from writing slow .pyc files to disk inside the container
+      - JWT_SECRET=${JWT_SECRET}
+      
       - PYTHONDONTWRITEBYTECODE=1
-      # Optimization: Forces Python logs to flush instantly to terminal so your docker logs aren't delayed
+      
       - PYTHONUNBUFFERED=1
     depends_on:
       db:
-        condition: service_healthy  # Wait until the Postgres health check passes!
-
-  # Service 2: Our PostgreSQL Database
+        condition: service_healthy  
+ 
   db:
     image: postgres:15-alpine
     container_name: shop_database
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
+      
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     ports:

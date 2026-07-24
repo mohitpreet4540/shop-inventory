@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retail POS - Executive Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+
+    <nav class="bg-blue-600 text-white shadow-md px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-chart-pie text-2xl"></i>
+            <span class="text-xl font-bold tracking-wide">Apna Bazar Analytics Console</span>
+        </div>
+        <div class="flex space-x-6 font-medium text-sm">
+            <a href="index.html" class="text-white border-b-2 border-white pb-1"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</a>
+            <a href="billing.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-calculator mr-1"></i> Billing Counter</a>
+            <a href="products.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory</a>
+            <a href="categories.html" class="hover:text-blue-200 transition"><i class="fa-solid fa-folder-tree mr-1"></i> Categories</a>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+        
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h4 class="text-xs font-black text-gray-400 uppercase tracking-wider">Analytics Timeline Filter</h4>
+                <p class="text-xs text-gray-500 font-medium">Select target scope to re-calculate revenue metrics instantly.</p>
+            </div>
+            <div class="flex flex-wrap bg-gray-100 p-1 rounded-xl border border-gray-200">
+                <button onclick="changeTimeframe('today')" id="btn-today" class="time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 bg-blue-600 text-white shadow-sm">Today</button>
+                <button onclick="changeTimeframe('weekly')" id="btn-weekly" class="time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 text-gray-600 hover:text-gray-900 ml-1">Weekly</button>
+                <button onclick="changeTimeframe('monthly')" id="btn-monthly" class="time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 text-gray-600 hover:text-gray-900 ml-1">Monthly</button>
+                <button onclick="changeTimeframe('six_months')" id="btn-six_months" class="time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 text-gray-600 hover:text-gray-900 ml-1">6 Months</button>
+                <button onclick="changeTimeframe('yearly')" id="btn-yearly" class="time-pill px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-150 text-gray-600 hover:text-gray-900 ml-1">1 Year</button>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+                <div>
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider block">Liquid Cash Collected</span>
+                    <h2 id="metric-liquid-cash" class="text-2xl font-black text-emerald-600 font-mono mt-1">₹0.00</h2>
+                    <span class="text-[10px] font-medium text-emerald-500 block mt-1"><i class="fa-solid fa-cash-register mr-0.5"></i> Money in Drawer</span>
+                </div>
+                <div class="bg-emerald-50 p-3.5 rounded-xl text-emerald-600 text-xl"><i class="fa-solid fa-money-bill-wave"></i></div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+                <div>
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider block">Market Credit (Udhaar)</span>
+                    <h2 id="metric-market-debt" class="text-2xl font-black text-red-600 font-mono mt-1">₹0.00</h2>
+                    <span class="text-[10px] font-medium text-red-400 block mt-1"><i class="fa-solid fa-user-clock mr-0.5"></i> Pending Collections</span>
+                </div>
+                <div class="bg-red-50 p-3.5 rounded-xl text-red-600 text-xl"><i class="fa-solid fa-hand-holding-dollar"></i></div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+                <div>
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider block">Net Take-Home Profit</span>
+                    <h2 id="metric-net-profit" class="text-2xl font-black text-blue-600 font-mono mt-1">₹0.00</h2>
+                    <span class="text-[10px] font-medium text-blue-400 block mt-1"><i class="fa-solid fa-arrow-trend-up mr-0.5"></i> Clear Earnings Margins</span>
+                </div>
+                <div class="bg-blue-50 p-3.5 rounded-xl text-blue-600 text-xl"><i class="fa-solid fa-sack-dollar"></i></div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between">
+                <div>
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider block">Low Stock SKU Alerts</span>
+                    <h2 id="metric-low-stock-count" class="text-2xl font-black text-amber-600 font-mono mt-1">0</h2>
+                    <span class="text-[10px] font-medium text-amber-500 block mt-1"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i> Reorder Immediately</span>
+                </div>
+                <div class="bg-amber-50 p-3.5 rounded-xl text-amber-600 text-xl"><i class="fa-solid fa-boxes-packing"></i></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 lg:col-span-2 flex flex-col justify-between">
+                <div class="border-b pb-3 mb-4 flex justify-between items-center">
+                    <h3 class="font-black text-gray-900 text-sm tracking-tight uppercase"><i class="fa-solid fa-chart-column text-blue-500 mr-1"></i> Business Health Matrix</h3>
+                    <span id="metric-sales-turnover" class="text-xs font-mono font-bold text-gray-500">Gross Sales Volume: ₹0.00</span>
+                </div>
+                <div class="relative w-full h-72">
+                    <canvas id="business-health-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 lg:col-span-1 flex flex-col">
+                <h3 class="font-black text-gray-900 text-sm tracking-tight uppercase border-b pb-3 mb-4"><i class="fa-solid fa-award text-amber-500 mr-1"></i> Performance Profile</h3>
+                
+                <div class="space-y-4 flex-1 flex flex-col justify-center">
+                    <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                        <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Top Moving Catalog Product</span>
+                        <div id="top-product-display" class="text-sm font-black text-gray-800 mt-1">Calculating data...</div>
+                        <span id="top-product-units" class="text-[10px] font-mono font-bold text-blue-600 mt-0.5 block">0 Units Sold</span>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                        <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Total Wholesale Capital Investment</span>
+                        <div id="metric-purchase-spend" class="text-xl font-black text-gray-700 font-mono mt-1">₹0.00</div>
+                        <span class="text-[10px] font-medium text-gray-400 mt-0.5 block">Locked inside inventory procurement cost</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <h3 class="font-black text-gray-900 text-sm tracking-tight uppercase pb-3 border-b mb-4 text-amber-700 flex items-center">
+                <i class="fa-solid fa-bell animate-bounce mr-2"></i> Immediate Reorder Replenishment Roster
+            </h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-amber-50/50 text-[10px] uppercase text-amber-700 font-black border-b border-amber-100">
+                        <tr>
+                            <th class="p-3 w-16 text-center">Product ID</th>
+                            <th class="p-3">Product Name Listing</th>
+                            <th class="p-3 text-center">Remaining Balance Stock</th>
+                            <th class="p-3 text-center">Status Action Actionable</th>
+                        </tr>
+                    </thead>
+                    <tbody id="low-stock-table-body" class="divide-y divide-gray-100">
+                        <tr><td colspan="4" class="p-4 text-center text-gray-400 text-xs">Awaiting live analytics compilation streams...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/app.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
