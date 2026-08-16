@@ -148,6 +148,13 @@ class ProductRestock(BaseModel):
     class Config:
         from_attributes = True
 
+class StockCorrection(BaseModel):
+    """For reconciling a physical stock count against the system — damage, theft,
+    miscounts, spoilage removal, etc. Always requires a reason; never a silent edit."""
+    new_quantity: Decimal = Field(..., ge=0, description="The actual counted quantity now on hand")
+    reason: str = Field(..., min_length=1, max_length=50, description="e.g. DAMAGE, THEFT, MISCOUNT, EXPIRED_REMOVED, OTHER")
+    notes: Optional[str] = Field(None, max_length=255)
+
 
 # ==========================================
 # 2B. 🌟 NEW: STOCK BATCH & EXPIRY SCHEMAS
@@ -266,6 +273,60 @@ class OrderResponse(BaseModel):
     customer_info: Optional[str]
     timestamp: datetime.datetime
     items: List[OrderItemResponse]
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================================
+# 4B. 🌟 NEW: RETURNS & REFUNDS SCHEMAS
+# ==========================================
+class ReturnItemCreate(BaseModel):
+    order_item_id: int = Field(..., description="The specific line item from the original order being returned")
+    quantity: Decimal = Field(..., gt=0)
+    restockable: bool = Field(default=True, description="False if damaged/expired — will NOT be added back to sellable stock")
+
+class ReturnCreate(BaseModel):
+    order_id: int
+    items: List[ReturnItemCreate] = Field(..., min_items=1)
+    reason: str = Field(..., min_length=1, max_length=50, description="DEFECTIVE, WRONG_ITEM, CHANGED_MIND, EXPIRED, OTHER")
+    refund_method: str = Field(..., description="CASH, ONLINE, or CREDIT_ADJUSTMENT")
+    notes: Optional[str] = Field(None, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_refund_method(self) -> "ReturnCreate":
+        if self.refund_method not in ("CASH", "ONLINE", "CREDIT_ADJUSTMENT"):
+            raise ValueError("refund_method must be 'CASH', 'ONLINE', or 'CREDIT_ADJUSTMENT'.")
+        return self
+
+class ReturnItemResponse(BaseModel):
+    id: int
+    order_item_id: int
+    product_id: int
+    product_name: Optional[str] = None
+    quantity_returned: Decimal
+    unit_price: Decimal
+    restockable: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_product_relationship(cls, data):
+        if hasattr(data, "product") and data.product:
+            setattr(data, "product_name", data.product.name)
+        return data
+
+    class Config:
+        from_attributes = True
+
+class ReturnResponse(BaseModel):
+    id: int
+    order_id: int
+    reason: str
+    refund_method: str
+    refund_amount: Decimal
+    notes: Optional[str] = None
+    timestamp: datetime.datetime
+    items: List[ReturnItemResponse]
 
     class Config:
         from_attributes = True

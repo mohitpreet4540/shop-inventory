@@ -4,52 +4,10 @@ from decimal import Decimal
 from typing import List
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.stock_utils import consume_batches_fefo  # 🌟 moved to a shared module so products.py can reuse it too
 from app import schemas, models
 
 router = APIRouter(prefix="/api/orders", tags=["Orders & Billing"])
-
-
-# =================================================================
-# 🌟 NEW: FEFO (First-Expiry-First-Out) BATCH CONSUMPTION
-# =================================================================
-def _consume_batches_fefo(db: Session, product_id: int, quantity_needed: Decimal):
-    """
-    Deducts `quantity_needed` from a product's stock batches, oldest-expiring first.
-    Non-expiring batches (expiry_date IS NULL) are consumed last.
-    Returns the weighted-average unit cost across whatever batches were drawn from,
-    for accurate per-sale profit tracking instead of relying on one blended cost figure.
-    """
-    batches = db.query(models.StockBatch).filter(
-        models.StockBatch.product_id == product_id,
-        models.StockBatch.quantity_remaining > 0
-    ).order_by(
-        models.StockBatch.expiry_date.is_(None),
-        models.StockBatch.expiry_date.asc()
-    ).with_for_update().all()
-
-    remaining_to_consume = quantity_needed
-    total_cost = Decimal("0.00")
-
-    for batch in batches:
-        if remaining_to_consume <= 0:
-            break
-        take = min(batch.quantity_remaining, remaining_to_consume)
-        batch.quantity_remaining -= take
-        total_cost += take * batch.unit_cost
-        remaining_to_consume -= take
-
-    if remaining_to_consume > 0:
-        # Batch records are out of sync with product.current_quantity — a real data
-        # integrity issue (e.g. stock adjusted outside the batch system).
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Stock batch records are out of sync for product ID {product_id} "
-                f"(short by {remaining_to_consume} units). Reconcile via a new restock entry."
-            )
-        )
-
-    return total_cost / quantity_needed if quantity_needed > 0 else Decimal("0.00")
 
 
 # Any logged-in role (OWNER, ADMIN, CASHIER) can process checkout — this is the cashier's main job.
@@ -115,7 +73,7 @@ def create_order(order_data: schemas.OrderCreate, db: Session = Depends(get_db),
 
             # 🌟 NEW: consume from the oldest-expiring batch(es) first (FEFO), and use the
             # real weighted cost of what was actually sold instead of one blended cost figure.
-            weighted_unit_cost = _consume_batches_fefo(db, product.id, quantity)
+            weighted_unit_cost = consume_batches_fefo(db, product.id, quantity)
             product.current_quantity -= quantity
 
             db.add(models.StockTransaction(

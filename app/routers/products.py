@@ -9,6 +9,7 @@ from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
 from app.dependencies import require_roles, get_current_user
+from app.stock_utils import consume_batches_fefo  # 🌟 NEW: for the correct-stock endpoint's negative-adjustment path
 from app import schemas, models
 
 router = APIRouter(prefix="/api/products", tags=["Product Master Inventory"])
@@ -195,6 +196,23 @@ def update_product(
 
         update_data = product_update.model_dump(exclude_unset=True)
 
+        # 🌟 FIX (audit gap): current_quantity must never be edited silently through this
+        # generic endpoint — it would desync the product's cached total from its actual
+        # StockBatch rows, which breaks FEFO checkout (see stock_utils.consume_batches_fefo).
+        # Any real quantity change must go through a route that also touches batches:
+        # POST /{id}/restock (adding new stock) or POST /{id}/correct-stock (reconciling
+        # a physical count, with a required reason).
+        if "current_quantity" in update_data:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Direct edits to current_quantity are not allowed here. "
+                    "Use POST /api/products/{id}/restock to add new stock, or "
+                    "POST /api/products/{id}/correct-stock to reconcile a physical count "
+                    "(requires a reason, e.g. DAMAGE, THEFT, MISCOUNT)."
+                )
+            )
+
         if "barcode" in update_data and update_data["barcode"]:
             existing = db.query(models.Product).filter(
                 models.Product.barcode == update_data["barcode"],
@@ -341,6 +359,82 @@ def list_product_batches(product_id: int, db: Session = Depends(get_db), current
         models.StockBatch.expiry_date.is_(None),
         models.StockBatch.expiry_date.asc()
     ).all()
+
+
+# =================================================================
+# 🌟 NEW: STOCK CORRECTION (OWNER, ADMIN) — reconcile a physical count
+# =================================================================
+# Replaces silently editing current_quantity. Always requires a reason, always
+# writes a StockTransaction, and keeps the batch system in sync:
+#   - Increase (found extra stock): added as a new non-expiring correction batch.
+#   - Decrease (damage/theft/miscount): drawn down via FEFO from existing batches,
+#     same as a sale, so expiry accuracy isn't lost.
+@router.post("/{product_id}/correct-stock", status_code=status.HTTP_200_OK)
+def correct_product_stock(
+    product_id: int,
+    payload: schemas.StockCorrection,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("OWNER", "ADMIN")),
+):
+    try:
+        product = db.query(models.Product).filter(models.Product.id == product_id).with_for_update().first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found.")
+
+        delta = payload.new_quantity - product.current_quantity
+        if delta == 0:
+            raise HTTPException(status_code=400, detail="New quantity matches the current quantity — no correction needed.")
+
+        reason_note = f"Stock correction. Reason: {payload.reason}."
+        if payload.notes:
+            reason_note += f" Notes: {payload.notes}"
+
+        if delta > 0:
+            # Found more stock than the system shows — log it as its own batch (no known
+            # expiry, since we don't know which delivery it actually came from).
+            db.add(models.StockBatch(
+                product_id=product.id,
+                quantity_received=delta,
+                quantity_remaining=delta,
+                unit_cost=product.cost_price,
+                expiry_date=None,
+                notes=reason_note,
+            ))
+            weighted_unit_cost = product.cost_price
+        else:
+            # Less stock than the system shows — draw down existing batches via FEFO,
+            # same mechanism checkout uses, so expiry tracking stays accurate.
+            weighted_unit_cost = consume_batches_fefo(db, product.id, abs(delta))
+
+        product.current_quantity = payload.new_quantity
+
+        db.add(models.StockTransaction(
+            product_id=product.id,
+            type="CORRECTION",
+            quantity_changed=delta,
+            unit_cost=weighted_unit_cost,
+            total_cost=abs(delta) * weighted_unit_cost,
+            notes=reason_note,
+        ))
+
+        db.commit()
+        db.refresh(product)
+
+        return {
+            "status": "Success",
+            "message": f"Stock corrected from {product.current_quantity - delta} to {product.current_quantity}.",
+            "product_name": product.name,
+            "quantity_delta": delta,
+            "new_on_hand_quantity": product.current_quantity,
+            "reason": payload.reason,
+        }
+
+    except HTTPException as he:
+        db.rollback()
+        raise he
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Stock correction failed: {str(e)}")
 
 
 # =================================================================

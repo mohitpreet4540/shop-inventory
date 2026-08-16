@@ -10,7 +10,7 @@ from app.database import engine
 from app.models import Base
 
 
-from app.routers import auth, categories, products, orders, dashboard, reports, search, customers, finance
+from app.routers import auth, categories, products, orders, dashboard, reports, search, customers, finance ,returns
 
 
 
@@ -62,10 +62,11 @@ app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(search.router)
 app.include_router(finance.router)
+app.include_router(returns.router)
 
 @app.get("/")
 def read_root():
     return {
-        "sttus": "online",
+        "status": "online",
        
     }

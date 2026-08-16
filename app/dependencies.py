@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 hours
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 # =================================================================
@@ -51,16 +51,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 # =================================================================
 # CURRENT USER RESOLUTION
 # =================================================================
-def get_current_user(
-    auth: HTTPAuthorizationCredentials = Depends(security), 
-    db: Session = Depends(get_db)
-) -> models.User:
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials.",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    token = auth.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         username: Optional[str] = payload.get("sub")
